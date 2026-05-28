@@ -177,6 +177,7 @@ export const englishCrmMessages = {
         before_this_month: "Before this month",
         before_this_week: "Before this week",
         managed_by_me: "Managed by me",
+        unassigned: "Unassigned",
         search: "Search name, company...",
         this_week: "This week",
         today: "Today",

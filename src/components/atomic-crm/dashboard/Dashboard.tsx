@@ -9,6 +9,7 @@ import { EarningsWidget } from "./EarningsWidget";
 import { HotContacts } from "./HotContacts";
 import { ShareProfileWidget } from "./ShareProfileWidget";
 import { TasksList } from "./TasksList";
+import { UnassignedLeadsWidget } from "./UnassignedLeadsWidget";
 import { Welcome } from "./Welcome";
 
 export const Dashboard = () => {
@@ -63,6 +64,7 @@ export const Dashboard = () => {
 
       <div className="md:col-span-3">
         <div className="flex flex-col gap-4">
+          <UnassignedLeadsWidget />
           <ShareProfileWidget />
           <EarningsWidget />
           <OsirisAssistantWidget />
