@@ -11,19 +11,54 @@ import type { CrmDataProvider } from "../providers/types";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
-export const OsirisAssistantWidget = () => {
+export type AssistantContext = {
+  kind: "contact" | "deal" | "company";
+  label: string;
+  /**
+   * Lines of context shown to the user under the header AND injected into the
+   * assistant prompt. Keep it short — facts only, no commentary.
+   */
+  facts: string[];
+};
+
+export const OsirisAssistantWidget = ({
+  context,
+}: {
+  context?: AssistantContext;
+}) => {
   const dataProvider = useDataProvider<CrmDataProvider>();
   const notify = useNotify();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const buildOutgoing = (next: ChatMessage[]): ChatMessage[] => {
+    if (!context) return next;
+    // Prepend a synthetic framing turn describing the current record. The
+    // edge function caps each message at 4000 chars and clips to the last 20.
+    const contextBlock = [
+      `Current ${context.kind}: ${context.label}`,
+      ...context.facts.map((f) => `- ${f}`),
+    ].join("\n");
+    return [
+      {
+        role: "user",
+        content: `Context for this conversation (read-only):\n${contextBlock}`,
+      },
+      { role: "assistant", content: "Got it. How can I help?" },
+      ...next,
+    ];
+  };
+
   const { mutate: ask, isPending } = useMutation({
     mutationFn: async (prompt: string) => {
-      const next: ChatMessage[] = [...messages, { role: "user", content: prompt }];
+      const next: ChatMessage[] = [
+        ...messages,
+        { role: "user", content: prompt },
+      ];
       setMessages(next);
       setInput("");
-      const reply = await dataProvider.osirisAssistantChat(next);
+      const reply = await dataProvider.osirisAssistantChat(buildOutgoing(next));
       return reply;
     },
     onSuccess: (reply) => {
@@ -40,7 +75,6 @@ export const OsirisAssistantWidget = () => {
         type: "error",
         messageArgs: { _: err.message || "Assistant failed" },
       });
-      // Roll back the optimistic user message so the input matches state.
       setMessages((prev) => prev.slice(0, -1));
     },
   });
@@ -61,14 +95,33 @@ export const OsirisAssistantWidget = () => {
           </h2>
         </div>
 
+        {context ? (
+          <div className="text-xs text-muted-foreground bg-muted/40 border rounded-md px-3 py-2">
+            <p className="font-medium text-foreground">
+              {context.kind === "contact"
+                ? "Contact:"
+                : context.kind === "deal"
+                  ? "Deal:"
+                  : "Company:"}{" "}
+              {context.label}
+            </p>
+            <ul className="mt-1 space-y-0.5">
+              {context.facts.map((f) => (
+                <li key={f}>· {f}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
         <div
           ref={scrollRef}
           className="max-h-72 overflow-y-auto space-y-3 text-sm pr-1"
         >
           {messages.length === 0 ? (
             <p className="text-muted-foreground text-xs">
-              Ask for a follow-up script, how to handle "I already have a
-              cleaner", or the next move on a stuck deal.
+              {context
+                ? `Ask for a follow-up script, an objection-handling line, or the next move for ${context.label}.`
+                : `Ask for a follow-up script, how to handle "I already have a cleaner", or the next move on a stuck deal.`}
             </p>
           ) : (
             messages.map((m, i) => (
