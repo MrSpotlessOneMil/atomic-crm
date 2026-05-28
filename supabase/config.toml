@@ -190,3 +190,5 @@ verify_jwt = false
 verify_jwt = false
 [functions.stripe_payout_trigger]
 verify_jwt = false
+[functions.stripe_webhook]
+verify_jwt = false
