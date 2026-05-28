@@ -167,6 +167,21 @@ export type DealPayout = {
   paid_at?: string | null;
 } & Pick<RaRecord, "id">;
 
+export type CommunityPost = {
+  sales_id: Identifier;
+  title: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+} & Pick<RaRecord, "id">;
+
+export type CommunityComment = {
+  post_id: Identifier;
+  sales_id: Identifier;
+  body: string;
+  created_at: string;
+} & Pick<RaRecord, "id">;
+
 export type ActivityCompanyCreated = {
   type: typeof COMPANY_CREATED;
   company_id: Identifier;

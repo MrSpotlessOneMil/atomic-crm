@@ -114,6 +114,14 @@ grant all on table public.deal_payouts to anon;
 grant all on table public.deal_payouts to authenticated;
 grant all on table public.deal_payouts to service_role;
 
+grant all on table public.community_posts to anon;
+grant all on table public.community_posts to authenticated;
+grant all on table public.community_posts to service_role;
+
+grant all on table public.community_comments to anon;
+grant all on table public.community_comments to authenticated;
+grant all on table public.community_comments to service_role;
+
 -- View grants
 grant all on table public.activity_log to anon;
 grant all on table public.activity_log to authenticated;
@@ -159,6 +167,14 @@ grant all on sequence public.favicons_excluded_domains_id_seq to service_role;
 grant all on sequence public.deal_payouts_id_seq to anon;
 grant all on sequence public.deal_payouts_id_seq to authenticated;
 grant all on sequence public.deal_payouts_id_seq to service_role;
+
+grant all on sequence public.community_posts_id_seq to anon;
+grant all on sequence public.community_posts_id_seq to authenticated;
+grant all on sequence public.community_posts_id_seq to service_role;
+
+grant all on sequence public.community_comments_id_seq to anon;
+grant all on sequence public.community_comments_id_seq to authenticated;
+grant all on sequence public.community_comments_id_seq to service_role;
 
 grant all on sequence public.sales_id_seq to anon;
 grant all on sequence public.sales_id_seq to authenticated;

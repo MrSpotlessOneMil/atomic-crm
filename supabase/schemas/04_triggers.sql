@@ -83,3 +83,12 @@ create or replace trigger on_auth_user_updated
 create or replace trigger deal_won_payout_trigger
     after insert or update of stage on public.deals
     for each row execute function public.handle_deal_won_payout();
+
+-- Auto-populate sales_id on community insert
+create or replace trigger set_community_post_sales_id_trigger
+    before insert on public.community_posts
+    for each row execute function public.set_sales_id_default();
+
+create or replace trigger set_community_comment_sales_id_trigger
+    before insert on public.community_comments
+    for each row execute function public.set_sales_id_default();
