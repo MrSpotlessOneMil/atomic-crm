@@ -8,6 +8,7 @@ import {
   useTranslate,
 } from "ra-core";
 import { Link } from "react-router";
+import { toast } from "sonner";
 import { DeleteButton } from "@/components/admin/delete-button";
 import { ReferenceField } from "@/components/admin/reference-field";
 import { Button } from "@/components/ui/button";
@@ -15,12 +16,15 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 import { FormToolbar } from "../layout/FormToolbar";
 import { CompanyAvatar } from "../companies/CompanyAvatar";
+import { useConfigurationContext } from "../root/ConfigurationContext";
 import type { Deal } from "../types";
 import { DealInputs } from "./DealInputs";
 
 export const DealEdit = ({ open, id }: { open: boolean; id?: string }) => {
   const redirect = useRedirect();
   const notify = useNotify();
+  const { payouts, currency } = useConfigurationContext();
+  const payoutRate = payouts?.defaultRate ?? 0.1;
 
   const handleClose = () => {
     redirect("/deals", undefined, undefined, undefined, {
@@ -36,7 +40,30 @@ export const DealEdit = ({ open, id }: { open: boolean; id?: string }) => {
             id={id}
             mutationMode="pessimistic"
             mutationOptions={{
-              onSuccess: () => {
+              onSuccess: (data: any, variables: any) => {
+                const newStage = data?.stage ?? variables?.data?.stage;
+                const oldStage = variables?.previousData?.stage;
+                if (newStage === "won" && oldStage !== "won") {
+                  const commission = Math.round(
+                    ((data?.amount ?? variables?.data?.amount ?? 0) *
+                      payoutRate),
+                  );
+                  toast.success(
+                    `You closed ${data?.name ?? "the deal"}${
+                      commission > 0
+                        ? ` — ${new Intl.NumberFormat(undefined, {
+                            style: "currency",
+                            currency,
+                            maximumFractionDigits: 0,
+                          }).format(commission)} payout queued.`
+                        : "!"
+                    }`,
+                    {
+                      description: "Nice work. Keep stacking.",
+                      duration: 6000,
+                    },
+                  );
+                }
                 notify("resources.deals.updated", {});
                 redirect(`/deals/${id}/show`, undefined, undefined, undefined, {
                   _scrollToTop: false,
