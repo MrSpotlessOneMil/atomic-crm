@@ -178,3 +178,5 @@ verify_jwt = false
 verify_jwt = false
 [functions.rep_profile]
 verify_jwt = false
+[functions.send_email]
+verify_jwt = false
