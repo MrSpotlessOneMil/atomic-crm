@@ -708,16 +708,20 @@ begin
     return NEW;
   end if;
 
-  -- Resolve commission rate from configuration.config.payouts.defaultRate,
-  -- defaulting to 10%.
-  select coalesce(
-    nullif(((c.config -> 'payouts' ->> 'defaultRate'))::numeric, 0),
-    0.10
-  ) into rate
-  from public.configuration c
-  where c.id = 1;
-  if rate is null then
-    rate := 0.10;
+  -- Resolve commission rate. Per-deal override wins; otherwise
+  -- configuration.config.payouts.defaultRate, falling back to 10%.
+  if NEW.commission_rate_override is not null then
+    rate := NEW.commission_rate_override;
+  else
+    select coalesce(
+      nullif(((c.config -> 'payouts' ->> 'defaultRate'))::numeric, 0),
+      0.10
+    ) into rate
+    from public.configuration c
+    where c.id = 1;
+    if rate is null then
+      rate := 0.10;
+    end if;
   end if;
 
   amount_cents := round(coalesce(NEW.amount, 0) * rate * 100);

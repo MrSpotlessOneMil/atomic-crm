@@ -24,7 +24,12 @@ const celebrateWonDeal = (
   currency: string,
 ) => {
   if (deal.stage !== "won" || previousStage === "won") return;
-  const commission = Math.round((deal.amount ?? 0) * payoutRate);
+  const effectiveRate =
+    typeof deal.commission_rate_override === "number" &&
+    deal.commission_rate_override > 0
+      ? deal.commission_rate_override
+      : payoutRate;
+  const commission = Math.round((deal.amount ?? 0) * effectiveRate);
   toast.success(
     `You closed ${deal.name}${
       commission > 0
