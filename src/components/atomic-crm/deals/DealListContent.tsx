@@ -2,6 +2,7 @@ import { DragDropContext, type OnDragEndResponder } from "@hello-pangea/dnd";
 import isEqual from "lodash/isEqual";
 import { useDataProvider, useListContext, type DataProvider } from "ra-core";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { useConfigurationContext } from "../root/ConfigurationContext";
 import type { Deal } from "../types";
@@ -9,10 +10,39 @@ import { DealColumn } from "./DealColumn";
 import type { DealsByStage } from "./stages";
 import { getDealsByStage } from "./stages";
 
+const formatMoney = (value: number, currency: string) =>
+  new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 0,
+  }).format(value);
+
+const celebrateWonDeal = (
+  deal: Deal,
+  previousStage: string,
+  payoutRate: number,
+  currency: string,
+) => {
+  if (deal.stage !== "won" || previousStage === "won") return;
+  const commission = Math.round((deal.amount ?? 0) * payoutRate);
+  toast.success(
+    `You closed ${deal.name}${
+      commission > 0
+        ? ` — ${formatMoney(commission, currency)} payout queued.`
+        : "!"
+    }`,
+    {
+      description: "Nice work. Keep stacking.",
+      duration: 6000,
+    },
+  );
+};
+
 export const DealListContent = () => {
-  const { dealStages } = useConfigurationContext();
+  const { dealStages, payouts, currency } = useConfigurationContext();
   const { data: unorderedDeals, isPending, refetch } = useListContext<Deal>();
   const dataProvider = useDataProvider();
+  const payoutRate = payouts?.defaultRate ?? 0.1;
 
   const [dealsByStage, setDealsByStage] = useState<DealsByStage>(
     getDealsByStage([], dealStages),
@@ -66,6 +96,14 @@ export const DealListContent = () => {
 
     // persist the changes
     updateDealStage(sourceDeal, destinationDeal, dataProvider).then(() => {
+      if (sourceStage !== destinationStage) {
+        celebrateWonDeal(
+          { ...sourceDeal, stage: destinationStage },
+          sourceStage,
+          payoutRate,
+          currency,
+        );
+      }
       refetch();
     });
   };
