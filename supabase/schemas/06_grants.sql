@@ -69,6 +69,18 @@ grant all on function public.handle_deal_won_payout() to anon;
 grant all on function public.handle_deal_won_payout() to authenticated;
 grant all on function public.handle_deal_won_payout() to service_role;
 
+grant all on function public.notify_on_community_comment() to anon;
+grant all on function public.notify_on_community_comment() to authenticated;
+grant all on function public.notify_on_community_comment() to service_role;
+
+grant all on function public.notify_on_lead_assignment() to anon;
+grant all on function public.notify_on_lead_assignment() to authenticated;
+grant all on function public.notify_on_lead_assignment() to service_role;
+
+grant all on function public.notify_on_payout_status() to anon;
+grant all on function public.notify_on_payout_status() to authenticated;
+grant all on function public.notify_on_payout_status() to service_role;
+
 -- Table grants
 grant all on table public.companies to anon;
 grant all on table public.companies to authenticated;
@@ -121,6 +133,10 @@ grant all on table public.community_posts to service_role;
 grant all on table public.community_comments to anon;
 grant all on table public.community_comments to authenticated;
 grant all on table public.community_comments to service_role;
+
+grant all on table public.notifications to anon;
+grant all on table public.notifications to authenticated;
+grant all on table public.notifications to service_role;
 
 -- View grants
 grant all on table public.activity_log to anon;
@@ -175,6 +191,10 @@ grant all on sequence public.community_posts_id_seq to service_role;
 grant all on sequence public.community_comments_id_seq to anon;
 grant all on sequence public.community_comments_id_seq to authenticated;
 grant all on sequence public.community_comments_id_seq to service_role;
+
+grant all on sequence public.notifications_id_seq to anon;
+grant all on sequence public.notifications_id_seq to authenticated;
+grant all on sequence public.notifications_id_seq to service_role;
 
 grant all on sequence public.sales_id_seq to anon;
 grant all on sequence public.sales_id_seq to authenticated;

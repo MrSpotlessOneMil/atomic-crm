@@ -182,6 +182,20 @@ export type CommunityComment = {
   created_at: string;
 } & Pick<RaRecord, "id">;
 
+export type NotificationType =
+  | "comment_on_post"
+  | "lead_assigned"
+  | "payout_approved"
+  | "payout_paid";
+
+export type Notification = {
+  sales_id: Identifier;
+  type: NotificationType;
+  payload: Record<string, unknown>;
+  read_at?: string | null;
+  created_at: string;
+} & Pick<RaRecord, "id">;
+
 export type ActivityCompanyCreated = {
   type: typeof COMPANY_CREATED;
   company_id: Identifier;

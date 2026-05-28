@@ -454,6 +454,98 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION "public"."notify_on_community_comment"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+declare
+  post_author_id bigint;
+  post_title text;
+begin
+  select sales_id, title into post_author_id, post_title
+  from public.community_posts where id = NEW.post_id;
+
+  if post_author_id is null or post_author_id = NEW.sales_id then
+    return NEW;
+  end if;
+
+  insert into public.notifications (sales_id, type, payload)
+  values (
+    post_author_id,
+    'comment_on_post',
+    jsonb_build_object(
+      'post_id', NEW.post_id,
+      'post_title', coalesce(post_title, ''),
+      'comment_id', NEW.id,
+      'commenter_sales_id', NEW.sales_id
+    )
+  );
+  return NEW;
+end;
+$$;
+
+CREATE OR REPLACE FUNCTION "public"."notify_on_lead_assignment"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+begin
+  if NEW.sales_id is null then
+    return NEW;
+  end if;
+  if TG_OP = 'UPDATE' and OLD.sales_id is not distinct from NEW.sales_id then
+    return NEW;
+  end if;
+
+  insert into public.notifications (sales_id, type, payload)
+  values (
+    NEW.sales_id,
+    'lead_assigned',
+    jsonb_build_object(
+      'contact_id', NEW.id,
+      'first_name', NEW.first_name,
+      'last_name', NEW.last_name
+    )
+  );
+  return NEW;
+end;
+$$;
+
+CREATE OR REPLACE FUNCTION "public"."notify_on_payout_status"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+declare
+  notif_type text;
+begin
+  if TG_OP <> 'UPDATE' then
+    return NEW;
+  end if;
+  if OLD.status is not distinct from NEW.status then
+    return NEW;
+  end if;
+
+  if NEW.status = 'approved' then
+    notif_type := 'payout_approved';
+  elsif NEW.status = 'paid' then
+    notif_type := 'payout_paid';
+  else
+    return NEW;
+  end if;
+
+  insert into public.notifications (sales_id, type, payload)
+  values (
+    NEW.sales_id,
+    notif_type,
+    jsonb_build_object(
+      'payout_id', NEW.id,
+      'deal_id', NEW.deal_id,
+      'amount_cents', NEW.amount_cents
+    )
+  );
+  return NEW;
+end;
+$$;
+
 CREATE OR REPLACE FUNCTION "public"."handle_deal_won_payout"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
