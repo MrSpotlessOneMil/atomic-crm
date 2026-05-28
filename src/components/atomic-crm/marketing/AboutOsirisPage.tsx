@@ -15,6 +15,8 @@ import { Link } from "react-router";
 
 import { Button } from "@/components/ui/button";
 
+import { LeadCaptureForm } from "./LeadCaptureForm";
+
 const services = [
   {
     icon: Home,
@@ -218,10 +220,23 @@ export const AboutOsirisPage = () => {
         </div>
       </section>
 
+      <section className="px-6 py-16 border-b bg-muted/30">
+        <div className="max-w-2xl mx-auto space-y-6">
+          <div className="text-center space-y-2">
+            <h2 className="text-3xl font-semibold">Need a clean?</h2>
+            <p className="text-muted-foreground">
+              Tell us about the job and we'll get back to you with a quote.
+              One of our reps will reach out within a business day.
+            </p>
+          </div>
+          <LeadCaptureForm />
+        </div>
+      </section>
+
       <section className="px-6 py-20">
         <div className="max-w-2xl mx-auto text-center space-y-6">
           <h2 className="text-3xl lg:text-4xl font-semibold">
-            Ready to start closing?
+            Or — join us as a rep
           </h2>
           <p className="text-muted-foreground">
             Sign up for free. Get trained. Start earning.

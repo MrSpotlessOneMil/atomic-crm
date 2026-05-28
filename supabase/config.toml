@@ -172,3 +172,7 @@ verify_jwt = false
 verify_jwt = false
 [functions.mcp]
 verify_jwt = false
+[functions.osiris_assistant]
+verify_jwt = false
+[functions.public_lead]
+verify_jwt = false
