@@ -241,6 +241,25 @@ const getDataProviderWithCustomMethods = () => {
       });
       return data.config as ConfigurationContextValue;
     },
+    async osirisAssistantChat(messages: Array<{ role: "user" | "assistant"; content: string }>) {
+      const { data, error } = await getSupabaseClient().functions.invoke<{
+        reply: string;
+      }>("osiris_assistant", {
+        method: "POST",
+        body: { messages },
+      });
+      if (error) {
+        const status = (error as { context?: { status?: number } })?.context
+          ?.status;
+        if (status === 503) {
+          throw new Error(
+            "OSIRIS assistant is not configured. Ask an admin to set ANTHROPIC_API_KEY.",
+          );
+        }
+        throw new Error("Assistant request failed");
+      }
+      return data?.reply ?? "";
+    },
   } satisfies DataProvider;
 };
 
