@@ -4,6 +4,7 @@ import { DeleteButton } from "@/components/admin";
 import { ReferenceManyField } from "@/components/admin/reference-many-field";
 import { ShowButton } from "@/components/admin/show-button";
 
+import { OsirisAssistantWidget } from "../assistant/OsirisAssistantWidget";
 import { AddTask } from "../tasks/AddTask";
 import { TasksIterator } from "../tasks/TasksIterator";
 import { TagsListEdit } from "./TagsListEdit";
@@ -65,6 +66,25 @@ export const ContactAside = ({ link = "edit" }: { link?: "edit" | "show" }) => {
           <TasksIterator />
         </ReferenceManyField>
         <AddTask />
+      </AsideSection>
+
+      <AsideSection title="OSIRIS assistant">
+        <OsirisAssistantWidget
+          context={{
+            kind: "contact",
+            label:
+              `${record.first_name ?? ""} ${record.last_name ?? ""}`.trim() ||
+              `Contact #${record.id}`,
+            facts: [
+              record.title ? `Title: ${record.title}` : null,
+              record.company_name
+                ? `Company: ${record.company_name}`
+                : null,
+              record.status ? `Status: ${record.status}` : null,
+              record.background ? `Background: ${record.background}` : null,
+            ].filter((s): s is string => !!s),
+          }}
+        />
       </AsideSection>
 
       {link !== "edit" && (

@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 
+import { OsirisAssistantWidget } from "../assistant/OsirisAssistantWidget";
 import { CompanyAvatar } from "../companies/CompanyAvatar";
 import { NoteCreate } from "../notes/NoteCreate";
 import { NotesIterator } from "../notes/NotesIterator";
@@ -179,6 +180,38 @@ const DealShowContent = () => {
             >
               <NotesIterator reference="deals" />
             </InfiniteListBase>
+          </div>
+
+          <div className="m-4">
+            <Separator className="mb-4" />
+            <OsirisAssistantWidget
+              context={{
+                kind: "deal",
+                label: record.name,
+                facts: [
+                  `Stage: ${findDealLabel(dealStages, record.stage)}`,
+                  record.category
+                    ? `Category: ${
+                        dealCategories.find((c) => c.value === record.category)
+                          ?.label ?? record.category
+                      }`
+                    : null,
+                  record.amount != null
+                    ? `Amount: ${record.amount.toLocaleString("en-US", {
+                        style: "currency",
+                        currency,
+                        maximumFractionDigits: 0,
+                      })}`
+                    : null,
+                  record.expected_closing_date
+                    ? `Expected close: ${formatISODateString(record.expected_closing_date)}`
+                    : null,
+                  record.description
+                    ? `Description: ${record.description.slice(0, 400)}`
+                    : null,
+                ].filter((s): s is string => !!s),
+              }}
+            />
           </div>
         </div>
       </div>
