@@ -1,4 +1,5 @@
 import {
+  CalendarCheck,
   DollarSign,
   Import,
   MessageSquare,
@@ -120,6 +121,7 @@ const Header = () => {
                   <PayoutsMenu />
                   <LeaderboardMenu />
                   <CommunityMenu />
+                  <BookingsMenu />
                   <CanAccess resource="sales" action="list">
                     <UsersMenu />
                   </CanAccess>
@@ -249,6 +251,22 @@ const CommunityMenu = () => {
       <Link to="/community" className="flex items-center gap-2">
         <MessageSquare />
         {translate("crm.nav.community", { _: "Community" })}
+      </Link>
+    </DropdownMenuItem>
+  );
+};
+
+const BookingsMenu = () => {
+  const translate = useTranslate();
+  const userMenuContext = useUserMenu();
+  if (!userMenuContext) {
+    throw new Error("<BookingsMenu> must be used inside <UserMenu>");
+  }
+  return (
+    <DropdownMenuItem asChild onClick={userMenuContext.onClose}>
+      <Link to="/bookings" className="flex items-center gap-2">
+        <CalendarCheck />
+        {translate("crm.nav.bookings", { _: "Bookings" })}
       </Link>
     </DropdownMenuItem>
   );

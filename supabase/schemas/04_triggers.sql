@@ -105,3 +105,7 @@ create or replace trigger notify_on_lead_assignment_trigger
 create or replace trigger notify_on_payout_status_trigger
     after update of status on public.deal_payouts
     for each row execute function public.notify_on_payout_status();
+
+create or replace trigger notify_on_booking_created_trigger
+    after insert on public.bookings
+    for each row execute function public.notify_on_booking_created();

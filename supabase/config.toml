@@ -180,3 +180,5 @@ verify_jwt = false
 verify_jwt = false
 [functions.send_email]
 verify_jwt = false
+[functions.book_slot]
+verify_jwt = false
