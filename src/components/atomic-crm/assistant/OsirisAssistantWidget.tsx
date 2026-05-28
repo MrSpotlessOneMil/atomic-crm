@@ -156,10 +156,46 @@ export const OsirisAssistantWidget = ({
               {context.label}
             </p>
             <ul className="mt-1 space-y-0.5">
-              {context.facts.map((f) => (
-                <li key={f}>· {f}</li>
+              {context.facts.slice(0, 4).map((f) => (
+                <li key={f}>· {f.length > 80 ? `${f.slice(0, 80)}…` : f}</li>
               ))}
+              {context.facts.length > 4 ? (
+                <li>
+                  · …plus {context.facts.length - 4} more (passed to the model)
+                </li>
+              ) : null}
             </ul>
+          </div>
+        ) : null}
+
+        {context && messages.length === 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {(context.kind === "contact"
+              ? [
+                  "Summarize this contact",
+                  "Suggest the next step",
+                  "Draft a follow-up email",
+                ]
+              : context.kind === "deal"
+                ? [
+                    "What's the highest-leverage next move?",
+                    "Draft a follow-up to push this forward",
+                    "Help me handle their objection",
+                  ]
+                : ["Summarize this company"]
+            ).map((q) => (
+              <Button
+                key={q}
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                disabled={isPending}
+                onClick={() => ask(q)}
+              >
+                {q}
+              </Button>
+            ))}
           </div>
         ) : null}
 
