@@ -260,6 +260,78 @@ const getDataProviderWithCustomMethods = () => {
       }
       return data?.reply ?? "";
     },
+    async osirisAssistantStream(
+      messages: Array<{ role: "user" | "assistant"; content: string }>,
+      onDelta: (textDelta: string) => void,
+      signal?: AbortSignal,
+    ) {
+      const supabase = getSupabaseClient();
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+      if (!accessToken) {
+        throw new Error("Not authenticated");
+      }
+      const url =
+        (import.meta.env.VITE_SUPABASE_URL as string) +
+        "/functions/v1/osiris_assistant?stream=1";
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+          apikey: import.meta.env.VITE_SB_PUBLISHABLE_KEY as string,
+        },
+        body: JSON.stringify({ messages }),
+        signal,
+      });
+      if (!res.ok || !res.body) {
+        if (res.status === 503) {
+          throw new Error(
+            "OSIRIS assistant is not configured. Ask an admin to set ANTHROPIC_API_KEY.",
+          );
+        }
+        throw new Error("Assistant request failed");
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      let full = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        // SSE event boundary is a blank line.
+        const events = buf.split("\n\n");
+        buf = events.pop() ?? "";
+        for (const evt of events) {
+          // Each event has lines like "event: foo" and "data: {...}".
+          // We only need the JSON data payloads.
+          for (const line of evt.split("\n")) {
+            if (!line.startsWith("data:")) continue;
+            const json = line.slice(5).trim();
+            if (!json || json === "[DONE]") continue;
+            try {
+              const obj = JSON.parse(json) as {
+                type?: string;
+                delta?: { type?: string; text?: string };
+              };
+              if (
+                obj.type === "content_block_delta" &&
+                obj.delta?.type === "text_delta" &&
+                typeof obj.delta.text === "string"
+              ) {
+                full += obj.delta.text;
+                onDelta(obj.delta.text);
+              }
+            } catch {
+              // Ignore malformed lines.
+            }
+          }
+        }
+      }
+      return full;
+    },
   } satisfies DataProvider;
 };
 
