@@ -78,6 +78,12 @@ export const OnboardingPage = () => {
         // Storage may be unavailable (private mode). Non-critical.
       }
     }
+    // Persist server-side so the flag survives device changes.
+    void (
+      dataProvider as unknown as {
+        markOnboardingCompleted?: () => Promise<void>;
+      }
+    ).markOnboardingCompleted?.();
   };
 
   return (

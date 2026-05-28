@@ -324,6 +324,9 @@ export const createDataProvider = ({
       await new Promise((r) => setTimeout(r, 600));
       return "(demo mode) OSIRIS isn't wired up in FakeRest. Connect Supabase and set ANTHROPIC_API_KEY to chat for real.";
     },
+    markOnboardingCompleted: async (): Promise<void> => {
+      // No-op in fakerest mode.
+    },
     osirisAssistantStream: async (
       _messages: Array<{ role: "user" | "assistant"; content: string }>,
       onDelta: (textDelta: string) => void,
