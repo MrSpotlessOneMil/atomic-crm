@@ -316,6 +316,14 @@ export const createDataProvider = ({
       });
       return config;
     },
+    osirisAssistantChat: async (
+      _messages: Array<{ role: "user" | "assistant"; content: string }>,
+    ): Promise<string> => {
+      // Demo mode: canned response. The real implementation lives in the
+      // supabase data provider and proxies to the osiris_assistant edge function.
+      await new Promise((r) => setTimeout(r, 600));
+      return "(demo mode) OSIRIS isn't wired up in FakeRest. Connect Supabase and set ANTHROPIC_API_KEY to chat for real.";
+    },
   };
 
   const dataProvider = withLifecycleCallbacks(
