@@ -18,6 +18,7 @@ import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { useConfigurationContext } from "../root/ConfigurationContext";
 import { ImportPage } from "../misc/ImportPage";
 import { NotificationsBell } from "../notifications/NotificationsBell";
+import { GlobalSearch } from "./GlobalSearch";
 
 const Header = () => {
   const { darkModeLogo, lightModeLogo, title } = useConfigurationContext();
@@ -113,6 +114,7 @@ const Header = () => {
                 </nav>
               </div>
               <div className="flex items-center">
+                <GlobalSearch />
                 <NotificationsBell />
                 <ThemeModeToggle />
                 <RefreshButton />
