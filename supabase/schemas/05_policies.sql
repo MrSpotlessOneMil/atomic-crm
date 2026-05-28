@@ -22,6 +22,7 @@ alter table public.tags enable row level security;
 alter table public.tasks enable row level security;
 alter table public.configuration enable row level security;
 alter table public.favicons_excluded_domains enable row level security;
+alter table public.deal_payouts enable row level security;
 
 -- Companies
 create policy "Companies select for owner or admin" on public.companies
@@ -225,3 +226,21 @@ create policy "Enable update for admins" on public.configuration for update to a
 
 -- Favicons excluded domains
 create policy "Enable access for authenticated users only" on public.favicons_excluded_domains to authenticated using (true) with check (true);
+
+-- Deal payouts: reps see their own; admins manage everything
+create policy "Payouts select for owner or admin" on public.deal_payouts
+  for select to authenticated
+  using (
+    public.is_admin()
+    or sales_id = (select id from public.sales where user_id = auth.uid())
+  );
+create policy "Payouts insert for admins" on public.deal_payouts
+  for insert to authenticated
+  with check (public.is_admin());
+create policy "Payouts update for admins" on public.deal_payouts
+  for update to authenticated
+  using (public.is_admin())
+  with check (public.is_admin());
+create policy "Payouts delete for admins" on public.deal_payouts
+  for delete to authenticated
+  using (public.is_admin());

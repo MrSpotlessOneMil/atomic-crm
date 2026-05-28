@@ -153,6 +153,20 @@ export type Task = {
   sales_id?: Identifier;
 } & Pick<RaRecord, "id">;
 
+export type DealPayoutStatus = "pending" | "approved" | "paid" | "void";
+
+export type DealPayout = {
+  deal_id: Identifier;
+  sales_id: Identifier;
+  amount_cents: number;
+  commission_rate: number;
+  status: DealPayoutStatus;
+  notes?: string | null;
+  created_at: string;
+  approved_at?: string | null;
+  paid_at?: string | null;
+} & Pick<RaRecord, "id">;
+
 export type ActivityCompanyCreated = {
   type: typeof COMPANY_CREATED;
   company_id: Identifier;

@@ -65,6 +65,10 @@ grant all on function public.set_sales_id_default() to anon;
 grant all on function public.set_sales_id_default() to authenticated;
 grant all on function public.set_sales_id_default() to service_role;
 
+grant all on function public.handle_deal_won_payout() to anon;
+grant all on function public.handle_deal_won_payout() to authenticated;
+grant all on function public.handle_deal_won_payout() to service_role;
+
 -- Table grants
 grant all on table public.companies to anon;
 grant all on table public.companies to authenticated;
@@ -105,6 +109,10 @@ grant all on table public.configuration to service_role;
 grant all on table public.favicons_excluded_domains to anon;
 grant all on table public.favicons_excluded_domains to authenticated;
 grant all on table public.favicons_excluded_domains to service_role;
+
+grant all on table public.deal_payouts to anon;
+grant all on table public.deal_payouts to authenticated;
+grant all on table public.deal_payouts to service_role;
 
 -- View grants
 grant all on table public.activity_log to anon;
@@ -147,6 +155,10 @@ grant all on sequence public.deals_id_seq to service_role;
 grant all on sequence public.favicons_excluded_domains_id_seq to anon;
 grant all on sequence public.favicons_excluded_domains_id_seq to authenticated;
 grant all on sequence public.favicons_excluded_domains_id_seq to service_role;
+
+grant all on sequence public.deal_payouts_id_seq to anon;
+grant all on sequence public.deal_payouts_id_seq to authenticated;
+grant all on sequence public.deal_payouts_id_seq to service_role;
 
 grant all on sequence public.sales_id_seq to anon;
 grant all on sequence public.sales_id_seq to authenticated;

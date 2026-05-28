@@ -27,6 +27,7 @@ import { ConfirmationRequired } from "../login/ConfirmationRequired";
 import { LeaderboardPage } from "../leaderboard/LeaderboardPage";
 import { AboutOsirisPage } from "../marketing/AboutOsirisPage";
 import { OnboardingPage } from "../onboarding/OnboardingPage";
+import { PayoutsPage } from "../payouts/PayoutsPage";
 import { ImportPage } from "../misc/ImportPage";
 import {
   getAuthProvider as defaultAuthProviderBuilder,
@@ -278,6 +279,7 @@ const DesktopAdmin = (
         <Route path={SettingsPage.path} element={<SettingsPage />} />
         <Route path={ImportPage.path} element={<ImportPage />} />
         <Route path={LeaderboardPage.path} element={<LeaderboardPage />} />
+        <Route path={PayoutsPage.path} element={<PayoutsPage />} />
       </CustomRoutes>
       <Resource name="deals" {...deals} />
       <Resource name="contacts" {...contacts} />
@@ -287,6 +289,7 @@ const DesktopAdmin = (
       <Resource name="tasks" />
       <Resource name="sales" {...sales} />
       <Resource name="tags" />
+      <Resource name="deal_payouts" />
     </Admin>
   );
 };
@@ -351,6 +354,7 @@ const MobileAdmin = (
             element={<SettingsPageMobile />}
           />
           <Route path={LeaderboardPage.path} element={<LeaderboardPage />} />
+          <Route path={PayoutsPage.path} element={<PayoutsPage />} />
         </CustomRoutes>
         <Resource
           name="contacts"
