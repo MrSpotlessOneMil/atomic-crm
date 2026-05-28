@@ -477,10 +477,10 @@ begin
     return NEW;
   end if;
 
-  -- Resolve commission rate from configuration.config.payouts.default_rate,
+  -- Resolve commission rate from configuration.config.payouts.defaultRate,
   -- defaulting to 10%.
   select coalesce(
-    nullif(((c.config -> 'payouts' ->> 'default_rate'))::numeric, 0),
+    nullif(((c.config -> 'payouts' ->> 'defaultRate'))::numeric, 0),
     0.10
   ) into rate
   from public.configuration c

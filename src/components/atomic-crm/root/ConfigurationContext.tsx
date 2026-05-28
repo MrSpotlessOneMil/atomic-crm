@@ -6,6 +6,11 @@ import { defaultConfiguration } from "./defaultConfiguration";
 
 export const CONFIGURATION_STORE_KEY = "app.configuration";
 
+export interface PayoutsConfig {
+  /** Default commission rate as a decimal (e.g. 0.10 = 10%). */
+  defaultRate: number;
+}
+
 export interface ConfigurationContextValue {
   companySectors: LabeledValue[];
   currency: string;
@@ -17,6 +22,7 @@ export interface ConfigurationContextValue {
   title: string;
   darkModeLogo: string;
   lightModeLogo: string;
+  payouts?: PayoutsConfig;
   googleWorkplaceDomain?: string;
   disableEmailPasswordAuthentication?: boolean;
 }

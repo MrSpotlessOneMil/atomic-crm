@@ -42,6 +42,7 @@ const SECTIONS = [
   { id: "deals", label: "resources.deals.name", fallback: "Deals" },
   { id: "notes", label: "resources.notes.name", fallback: "Notes" },
   { id: "tasks", label: "resources.tasks.name", fallback: "Tasks" },
+  { id: "payouts", label: "crm.settings.sections.payouts", fallback: "Payouts" },
 ];
 
 /** Ensure every item in a { value, label } array has a value (slug from label). */
@@ -116,20 +117,29 @@ const getCurrencyChoices = () => {
   }));
 };
 
-const transformFormValues = (data: Record<string, any>) => ({
-  config: {
-    title: data.title,
-    lightModeLogo: data.lightModeLogo,
-    darkModeLogo: data.darkModeLogo,
-    currency: data.currency,
-    companySectors: ensureValues(data.companySectors),
-    dealCategories: ensureValues(data.dealCategories),
-    taskTypes: ensureValues(data.taskTypes),
-    dealStages: ensureValues(data.dealStages),
-    dealPipelineStatuses: data.dealPipelineStatuses,
-    noteStatuses: ensureValues(data.noteStatuses),
-  } as ConfigurationContextValue,
-});
+const transformFormValues = (data: Record<string, any>) => {
+  // Accept the commission rate as a percent (0-100) in the UI and store it as a decimal.
+  const ratePct = Number(data.payoutsDefaultRatePct);
+  const defaultRate =
+    Number.isFinite(ratePct) && ratePct >= 0 && ratePct <= 100
+      ? ratePct / 100
+      : 0.1;
+  return {
+    config: {
+      title: data.title,
+      lightModeLogo: data.lightModeLogo,
+      darkModeLogo: data.darkModeLogo,
+      currency: data.currency,
+      companySectors: ensureValues(data.companySectors),
+      dealCategories: ensureValues(data.dealCategories),
+      taskTypes: ensureValues(data.taskTypes),
+      dealStages: ensureValues(data.dealStages),
+      dealPipelineStatuses: data.dealPipelineStatuses,
+      noteStatuses: ensureValues(data.noteStatuses),
+      payouts: { defaultRate },
+    } as ConfigurationContextValue,
+  };
+};
 
 export const SettingsPage = () => {
   const updateConfiguration = useConfigurationUpdater();
@@ -176,6 +186,9 @@ const SettingsForm = () => {
       dealStages: config.dealStages,
       dealPipelineStatuses: config.dealPipelineStatuses,
       noteStatuses: config.noteStatuses,
+      payoutsDefaultRatePct: Math.round(
+        ((config.payouts?.defaultRate ?? 0.1) * 100 + Number.EPSILON) * 100,
+      ) / 100,
     }),
     [config],
   );
@@ -460,6 +473,31 @@ const SettingsFormFields = () => {
                 <TextInput source="label" label={false} />
               </SimpleFormIterator>
             </ArrayInput>
+          </CardContent>
+        </Card>
+
+        {/* Payouts */}
+        <Card id="payouts">
+          <CardContent className="space-y-4">
+            <h2 className="text-xl font-semibold text-muted-foreground">
+              {translate("crm.settings.sections.payouts", { _: "Payouts" })}
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              {translate("crm.settings.payouts.help", {
+                _: "Default commission percentage applied when a deal moves to Won. Only affects deals won after the change.",
+              })}
+            </p>
+            <div className="flex items-end gap-3 max-w-xs">
+              <div className="flex-1">
+                <TextInput
+                  source="payoutsDefaultRatePct"
+                  type="number"
+                  label="crm.settings.payouts.default_rate"
+                  helperText={false}
+                />
+              </div>
+              <span className="text-lg pb-3">%</span>
+            </div>
           </CardContent>
         </Card>
       </div>
