@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useDataProvider, useLogin, useNotify, useTranslate } from "ra-core";
 import { useForm, type SubmitHandler } from "react-hook-form";
-import { Navigate, useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,12 +41,12 @@ export const SignupPage = () => {
       login({
         email: data.email,
         password: data.password,
-        redirectTo: "/contacts",
+        redirectTo: "/onboarding",
       })
         .then(() => {
           notify("crm.auth.signup.initial_user_created", {
             messageArgs: {
-              _: "Initial user successfully created",
+              _: "Welcome to OSIRIS! Let's get you set up.",
             },
           });
           // FIXME: We should probably provide a hook for that in the ra-core package
@@ -89,11 +89,6 @@ export const SignupPage = () => {
     return <LoginSkeleton />;
   }
 
-  // For the moment, we only allow one user to sign up. Other users must be created by the administrator.
-  if (isInitialized) {
-    return <Navigate to="/login" />;
-  }
-
   const onSubmit: SubmitHandler<SignUpData> = async (data) => {
     mutate(data);
   };
@@ -112,14 +107,22 @@ export const SignupPage = () => {
       <div className="h-full">
         <div className="max-w-sm mx-auto h-full flex flex-col justify-center gap-4">
           <h1 className="text-2xl font-bold mb-4">
-            {translate("crm.auth.welcome_title", {
-              _: "Welcome to Atomic CRM",
-            })}
+            {isInitialized
+              ? translate("crm.auth.welcome_title_join", {
+                  _: "Join the OSIRIS sales team",
+                })
+              : translate("crm.auth.welcome_title", {
+                  _: "Welcome to Atomic CRM",
+                })}
           </h1>
           <p className="text-base mb-4">
-            {translate("crm.auth.signup.create_first_user", {
-              _: "Create the first user account to complete the setup.",
-            })}
+            {isInitialized
+              ? translate("crm.auth.signup.join_team", {
+                  _: "Sign up and start closing deals today.",
+                })
+              : translate("crm.auth.signup.create_first_user", {
+                  _: "Create the first user account to complete the setup.",
+                })}
           </p>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div className="flex flex-col gap-2">
@@ -193,6 +196,20 @@ export const SignupPage = () => {
               ) : null}
             </div>
           </form>
+          <div className="flex flex-col gap-2 items-center mt-4 text-sm">
+            <Link to="/about-osiris" className="hover:underline">
+              {translate("crm.auth.what_is_osiris", {
+                _: "What is OSIRIS?",
+              })}
+            </Link>
+            {isInitialized ? (
+              <Link to="/login" className="hover:underline">
+                {translate("crm.auth.already_have_account", {
+                  _: "Already have an account? Sign in",
+                })}
+              </Link>
+            ) : null}
+          </div>
         </div>
       </div>
       <Notification />

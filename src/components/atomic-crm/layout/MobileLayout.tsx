@@ -4,11 +4,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Suspense, type ReactNode } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 
+import { useOnboardingRedirect } from "../onboarding/useOnboardingRedirect";
 import { useConfigurationLoader } from "../root/useConfigurationLoader";
 import { MobileNavigation } from "./MobileNavigation";
 
 export const MobileLayout = ({ children }: { children: ReactNode }) => {
   useConfigurationLoader();
+  useOnboardingRedirect();
   return (
     <>
       <ErrorBoundary FallbackComponent={Error}>

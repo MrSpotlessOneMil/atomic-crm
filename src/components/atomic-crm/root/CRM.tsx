@@ -4,7 +4,7 @@ import type {
   DashboardComponent,
   LayoutComponent,
 } from "ra-core";
-import { CustomRoutes, localStorageStore, Resource } from "ra-core";
+import { Authenticated, CustomRoutes, localStorageStore, Resource } from "ra-core";
 import { useEffect, useMemo } from "react";
 import { Route } from "react-router";
 import { QueryClient } from "@tanstack/react-query";
@@ -24,6 +24,9 @@ import { Layout } from "../layout/Layout";
 import { MobileLayout } from "../layout/MobileLayout";
 import { SignupPage } from "../login/SignupPage";
 import { ConfirmationRequired } from "../login/ConfirmationRequired";
+import { LeaderboardPage } from "../leaderboard/LeaderboardPage";
+import { AboutOsirisPage } from "../marketing/AboutOsirisPage";
+import { OnboardingPage } from "../onboarding/OnboardingPage";
 import { ImportPage } from "../misc/ImportPage";
 import {
   getAuthProvider as defaultAuthProviderBuilder,
@@ -256,12 +259,25 @@ const DesktopAdmin = (
           element={<ForgotPasswordPage />}
         />
         <Route path={OAuthConsentPage.path} element={<OAuthConsentPage />} />
+        <Route path={AboutOsirisPage.path} element={<AboutOsirisPage />} />
+      </CustomRoutes>
+
+      <CustomRoutes noLayout>
+        <Route
+          path={OnboardingPage.path}
+          element={
+            <Authenticated>
+              <OnboardingPage />
+            </Authenticated>
+          }
+        />
       </CustomRoutes>
 
       <CustomRoutes>
         <Route path={ProfilePage.path} element={<ProfilePage />} />
         <Route path={SettingsPage.path} element={<SettingsPage />} />
         <Route path={ImportPage.path} element={<ImportPage />} />
+        <Route path={LeaderboardPage.path} element={<LeaderboardPage />} />
       </CustomRoutes>
       <Resource name="deals" {...deals} />
       <Resource name="contacts" {...contacts} />
@@ -319,12 +335,22 @@ const MobileAdmin = (
             element={<ForgotPasswordPage />}
           />
           <Route path={OAuthConsentPage.path} element={<OAuthConsentPage />} />
+          <Route path={AboutOsirisPage.path} element={<AboutOsirisPage />} />
+          <Route
+            path={OnboardingPage.path}
+            element={
+              <Authenticated>
+                <OnboardingPage />
+              </Authenticated>
+            }
+          />
         </CustomRoutes>
         <CustomRoutes>
           <Route
             path={SettingsPageMobile.path}
             element={<SettingsPageMobile />}
           />
+          <Route path={LeaderboardPage.path} element={<LeaderboardPage />} />
         </CustomRoutes>
         <Resource
           name="contacts"

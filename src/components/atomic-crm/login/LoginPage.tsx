@@ -148,6 +148,24 @@ export const LoginPage = (props: { redirectTo?: string }) => {
                 })}
               </Link>
             )}
+            {disableEmailPasswordAuthentication ? null : (
+              <Link
+                to={"/sign-up"}
+                className="block text-sm text-center hover:underline"
+              >
+                {translate("crm.auth.no_account_sign_up", {
+                  _: "Don't have an account? Sign up",
+                })}
+              </Link>
+            )}
+            <Link
+              to={"/about-osiris"}
+              className="block text-sm text-center hover:underline text-muted-foreground"
+            >
+              {translate("crm.auth.what_is_osiris", {
+                _: "What is OSIRIS?",
+              })}
+            </Link>
           </div>
         </div>
       </div>

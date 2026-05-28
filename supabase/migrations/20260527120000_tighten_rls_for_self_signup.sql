@@ -1,29 +1,21 @@
+-- Tighten RLS for self-signup
 --
--- Row Level Security
--- This file declares RLS policies for all tables.
+-- Replaces the wide-open `using (true)` policies on companies, contacts,
+-- contact_notes, deals, deal_notes and tasks with policies that scope access
+-- to the row owner (sales_id matches the calling user's sales row) while
+-- preserving full access for administrators.
 --
--- Authorization model:
---   * Admins (public.is_admin() = true) have full access to all rows.
---   * Non-admin sales reps can only see and modify rows whose sales_id matches
---     their own sales row id (resolved via auth.uid()).
---   * The sales table itself remains readable to all authenticated users so the
---     leaderboard / reference inputs continue to work.
---   * Tags, configuration and favicons_excluded_domains remain shared.
---
+-- This migration was hand-written (Docker / Supabase CLI was not running on the
+-- development machine when the schema was changed).
 
--- Enable RLS on all tables
-alter table public.companies enable row level security;
-alter table public.contacts enable row level security;
-alter table public.contact_notes enable row level security;
-alter table public.deals enable row level security;
-alter table public.deal_notes enable row level security;
-alter table public.sales enable row level security;
-alter table public.tags enable row level security;
-alter table public.tasks enable row level security;
-alter table public.configuration enable row level security;
-alter table public.favicons_excluded_domains enable row level security;
+set check_function_bodies = off;
 
 -- Companies
+drop policy if exists "Enable read access for authenticated users" on public.companies;
+drop policy if exists "Enable insert for authenticated users only" on public.companies;
+drop policy if exists "Enable update for authenticated users only" on public.companies;
+drop policy if exists "Company Delete Policy" on public.companies;
+
 create policy "Companies select for owner or admin" on public.companies
   for select to authenticated
   using (
@@ -55,6 +47,11 @@ create policy "Companies delete for owner or admin" on public.companies
   );
 
 -- Contacts
+drop policy if exists "Enable read access for authenticated users" on public.contacts;
+drop policy if exists "Enable insert for authenticated users only" on public.contacts;
+drop policy if exists "Enable update for authenticated users only" on public.contacts;
+drop policy if exists "Contact Delete Policy" on public.contacts;
+
 create policy "Contacts select for owner or admin" on public.contacts
   for select to authenticated
   using (
@@ -85,7 +82,12 @@ create policy "Contacts delete for owner or admin" on public.contacts
     or sales_id = (select id from public.sales where user_id = auth.uid())
   );
 
--- Contact Notes
+-- Contact notes
+drop policy if exists "Enable read access for authenticated users" on public.contact_notes;
+drop policy if exists "Enable insert for authenticated users only" on public.contact_notes;
+drop policy if exists "Contact Notes Update policy" on public.contact_notes;
+drop policy if exists "Contact Notes Delete Policy" on public.contact_notes;
+
 create policy "Contact notes select for owner or admin" on public.contact_notes
   for select to authenticated
   using (
@@ -117,6 +119,11 @@ create policy "Contact notes delete for owner or admin" on public.contact_notes
   );
 
 -- Deals
+drop policy if exists "Enable read access for authenticated users" on public.deals;
+drop policy if exists "Enable insert for authenticated users only" on public.deals;
+drop policy if exists "Enable update for authenticated users only" on public.deals;
+drop policy if exists "Deals Delete Policy" on public.deals;
+
 create policy "Deals select for owner or admin" on public.deals
   for select to authenticated
   using (
@@ -147,7 +154,12 @@ create policy "Deals delete for owner or admin" on public.deals
     or sales_id = (select id from public.sales where user_id = auth.uid())
   );
 
--- Deal Notes
+-- Deal notes
+drop policy if exists "Enable read access for authenticated users" on public.deal_notes;
+drop policy if exists "Enable insert for authenticated users only" on public.deal_notes;
+drop policy if exists "Deal Notes Update Policy" on public.deal_notes;
+drop policy if exists "Deal Notes Delete Policy" on public.deal_notes;
+
 create policy "Deal notes select for owner or admin" on public.deal_notes
   for select to authenticated
   using (
@@ -179,6 +191,11 @@ create policy "Deal notes delete for owner or admin" on public.deal_notes
   );
 
 -- Tasks
+drop policy if exists "Enable read access for authenticated users" on public.tasks;
+drop policy if exists "Enable insert for authenticated users only" on public.tasks;
+drop policy if exists "Task Update Policy" on public.tasks;
+drop policy if exists "Task Delete Policy" on public.tasks;
+
 create policy "Tasks select for owner or admin" on public.tasks
   for select to authenticated
   using (
@@ -208,20 +225,3 @@ create policy "Tasks delete for owner or admin" on public.tasks
     public.is_admin()
     or sales_id = (select id from public.sales where user_id = auth.uid())
   );
-
--- Sales (readable to all so the leaderboard / reference inputs work)
-create policy "Enable read access for authenticated users" on public.sales for select to authenticated using (true);
-
--- Tags
-create policy "Enable read access for authenticated users" on public.tags for select to authenticated using (true);
-create policy "Enable insert for authenticated users only" on public.tags for insert to authenticated with check (true);
-create policy "Enable update for authenticated users only" on public.tags for update to authenticated using (true);
-create policy "Enable delete for authenticated users only" on public.tags for delete to authenticated using (true);
-
--- Configuration (admin-only for writes)
-create policy "Enable read for authenticated" on public.configuration for select to authenticated using (true);
-create policy "Enable insert for admins" on public.configuration for insert to authenticated with check (public.is_admin());
-create policy "Enable update for admins" on public.configuration for update to authenticated using (public.is_admin()) with check (public.is_admin());
-
--- Favicons excluded domains
-create policy "Enable access for authenticated users only" on public.favicons_excluded_domains to authenticated using (true) with check (true);

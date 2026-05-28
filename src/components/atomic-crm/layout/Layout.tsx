@@ -4,11 +4,13 @@ import { Notification } from "@/components/admin/notification";
 import { Error } from "@/components/admin/error";
 import { Skeleton } from "@/components/ui/skeleton";
 
+import { useOnboardingRedirect } from "../onboarding/useOnboardingRedirect";
 import { useConfigurationLoader } from "../root/useConfigurationLoader";
 import Header from "./Header";
 
 export const Layout = ({ children }: { children: ReactNode }) => {
   useConfigurationLoader();
+  useOnboardingRedirect();
   return (
     <>
       <Header />
