@@ -7,6 +7,7 @@ import { DashboardStepper } from "./DashboardStepper";
 import { DealsChart } from "./DealsChart";
 import { EarningsWidget } from "./EarningsWidget";
 import { HotContacts } from "./HotContacts";
+import { PersonalActivityFeed } from "./PersonalActivityFeed";
 import { ShareProfileWidget } from "./ShareProfileWidget";
 import { StripeOnboardingWidget } from "./StripeOnboardingWidget";
 import { TasksList } from "./TasksList";
@@ -59,6 +60,7 @@ export const Dashboard = () => {
       <div className="md:col-span-6">
         <div className="flex flex-col gap-6">
           {totalDeal ? <DealsChart /> : null}
+          <PersonalActivityFeed />
           <DashboardActivityLog />
         </div>
       </div>
