@@ -1,4 +1,12 @@
-import { Import, Settings, User, Users } from "lucide-react";
+import {
+  DollarSign,
+  Import,
+  MessageSquare,
+  Settings,
+  Trophy,
+  User,
+  Users,
+} from "lucide-react";
 import { CanAccess, useTranslate, useUserMenu } from "ra-core";
 import { Link, matchPath, useLocation } from "react-router";
 import { RefreshButton } from "@/components/admin/refresh-button";
@@ -23,6 +31,12 @@ const Header = () => {
     currentPath = "/companies";
   } else if (matchPath("/deals/*", location.pathname)) {
     currentPath = "/deals";
+  } else if (matchPath("/payouts/*", location.pathname)) {
+    currentPath = "/payouts";
+  } else if (matchPath("/leaderboard/*", location.pathname)) {
+    currentPath = "/leaderboard";
+  } else if (matchPath("/community/*", location.pathname)) {
+    currentPath = "/community";
   } else {
     currentPath = false;
   }
@@ -77,6 +91,23 @@ const Header = () => {
                     to="/deals"
                     isActive={currentPath === "/deals"}
                   />
+                  <NavigationTab
+                    label={translate("crm.nav.payouts", { _: "Payouts" })}
+                    to="/payouts"
+                    isActive={currentPath === "/payouts"}
+                  />
+                  <NavigationTab
+                    label={translate("crm.nav.leaderboard", {
+                      _: "Leaderboard",
+                    })}
+                    to="/leaderboard"
+                    isActive={currentPath === "/leaderboard"}
+                  />
+                  <NavigationTab
+                    label={translate("crm.nav.community", { _: "Community" })}
+                    to="/community"
+                    isActive={currentPath === "/community"}
+                  />
                 </nav>
               </div>
               <div className="flex items-center">
@@ -84,6 +115,9 @@ const Header = () => {
                 <RefreshButton />
                 <UserMenu>
                   <ProfileMenu />
+                  <PayoutsMenu />
+                  <LeaderboardMenu />
+                  <CommunityMenu />
                   <CanAccess resource="sales" action="list">
                     <UsersMenu />
                   </CanAccess>
@@ -165,6 +199,54 @@ const SettingsMenu = () => {
       <Link to="/settings" className="flex items-center gap-2">
         <Settings />
         {translate("crm.settings.title")}
+      </Link>
+    </DropdownMenuItem>
+  );
+};
+
+const PayoutsMenu = () => {
+  const translate = useTranslate();
+  const userMenuContext = useUserMenu();
+  if (!userMenuContext) {
+    throw new Error("<PayoutsMenu> must be used inside <UserMenu>");
+  }
+  return (
+    <DropdownMenuItem asChild onClick={userMenuContext.onClose}>
+      <Link to="/payouts" className="flex items-center gap-2">
+        <DollarSign />
+        {translate("crm.nav.payouts", { _: "Payouts" })}
+      </Link>
+    </DropdownMenuItem>
+  );
+};
+
+const LeaderboardMenu = () => {
+  const translate = useTranslate();
+  const userMenuContext = useUserMenu();
+  if (!userMenuContext) {
+    throw new Error("<LeaderboardMenu> must be used inside <UserMenu>");
+  }
+  return (
+    <DropdownMenuItem asChild onClick={userMenuContext.onClose}>
+      <Link to="/leaderboard" className="flex items-center gap-2">
+        <Trophy />
+        {translate("crm.nav.leaderboard", { _: "Leaderboard" })}
+      </Link>
+    </DropdownMenuItem>
+  );
+};
+
+const CommunityMenu = () => {
+  const translate = useTranslate();
+  const userMenuContext = useUserMenu();
+  if (!userMenuContext) {
+    throw new Error("<CommunityMenu> must be used inside <UserMenu>");
+  }
+  return (
+    <DropdownMenuItem asChild onClick={userMenuContext.onClose}>
+      <Link to="/community" className="flex items-center gap-2">
+        <MessageSquare />
+        {translate("crm.nav.community", { _: "Community" })}
       </Link>
     </DropdownMenuItem>
   );
