@@ -14,6 +14,8 @@ type RequestBody = {
   phone?: string;
   message?: string;
   service_interest?: "residential" | "commercial" | "recurring" | "other";
+  /** Optional rep referral when the form is submitted from /u/<id>. */
+  referred_by_sales_id?: number | string;
   /** Honeypot field — bots fill it, humans never see it. */
   website?: string;
 };
@@ -59,10 +61,29 @@ const handleSubmit = async (req: Request) => {
     return createErrorResponse(400, "Invalid email");
   }
 
+  // Resolve referral: if a sales_id was passed, verify it exists & not disabled
+  // before assigning. Invalid referrals silently fall back to unassigned.
+  let referredSalesId: number | null = null;
+  if (body.referred_by_sales_id != null) {
+    const candidate = Number(body.referred_by_sales_id);
+    if (Number.isFinite(candidate) && candidate > 0) {
+      const { data: sale } = await supabaseAdmin
+        .from("sales")
+        .select("id, disabled")
+        .eq("id", candidate)
+        .single();
+      if (sale && !sale.disabled) {
+        referredSalesId = sale.id;
+      }
+    }
+  }
+
   const background = [
     service_interest ? `Service interest: ${service_interest}` : "",
     message ? `Message: ${message}` : "",
-    "Source: public OSIRIS lead form",
+    referredSalesId != null
+      ? `Source: rep profile (/u/${referredSalesId})`
+      : "Source: public OSIRIS lead form",
   ]
     .filter(Boolean)
     .join("\n");
@@ -77,7 +98,7 @@ const handleSubmit = async (req: Request) => {
       background,
       first_seen: new Date().toISOString(),
       last_seen: new Date().toISOString(),
-      sales_id: null,
+      sales_id: referredSalesId,
     })
     .select("id")
     .single();

@@ -27,6 +27,7 @@ import { ConfirmationRequired } from "../login/ConfirmationRequired";
 import { CommunityPage } from "../community/CommunityPage";
 import { LeaderboardPage } from "../leaderboard/LeaderboardPage";
 import { AboutOsirisPage } from "../marketing/AboutOsirisPage";
+import { RepProfilePage } from "../marketing/RepProfilePage";
 import { OnboardingPage } from "../onboarding/OnboardingPage";
 import { PayoutsPage } from "../payouts/PayoutsPage";
 import { ImportPage } from "../misc/ImportPage";
@@ -262,6 +263,7 @@ const DesktopAdmin = (
         />
         <Route path={OAuthConsentPage.path} element={<OAuthConsentPage />} />
         <Route path={AboutOsirisPage.path} element={<AboutOsirisPage />} />
+        <Route path={RepProfilePage.path} element={<RepProfilePage />} />
       </CustomRoutes>
 
       <CustomRoutes noLayout>
@@ -343,6 +345,7 @@ const MobileAdmin = (
           />
           <Route path={OAuthConsentPage.path} element={<OAuthConsentPage />} />
           <Route path={AboutOsirisPage.path} element={<AboutOsirisPage />} />
+          <Route path={RepProfilePage.path} element={<RepProfilePage />} />
           <Route
             path={OnboardingPage.path}
             element={

@@ -7,6 +7,7 @@ import { DashboardStepper } from "./DashboardStepper";
 import { DealsChart } from "./DealsChart";
 import { EarningsWidget } from "./EarningsWidget";
 import { HotContacts } from "./HotContacts";
+import { ShareProfileWidget } from "./ShareProfileWidget";
 import { TasksList } from "./TasksList";
 import { Welcome } from "./Welcome";
 
@@ -62,6 +63,7 @@ export const Dashboard = () => {
 
       <div className="md:col-span-3">
         <div className="flex flex-col gap-4">
+          <ShareProfileWidget />
           <EarningsWidget />
           <OsirisAssistantWidget />
           <TasksList />

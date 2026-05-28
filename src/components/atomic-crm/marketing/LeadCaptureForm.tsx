@@ -25,7 +25,11 @@ const FUNCTION_URL =
   "/functions/v1/public_lead";
 const PUBLISHABLE_KEY = import.meta.env.VITE_SB_PUBLISHABLE_KEY;
 
-export const LeadCaptureForm = () => {
+export const LeadCaptureForm = ({
+  referredBySalesId,
+}: {
+  referredBySalesId?: number | string;
+} = {}) => {
   const [state, setState] = useState<State>({ kind: "idle" });
   const [form, setForm] = useState({
     first_name: "",
@@ -48,7 +52,12 @@ export const LeadCaptureForm = () => {
           "Content-Type": "application/json",
           ...(PUBLISHABLE_KEY ? { apikey: PUBLISHABLE_KEY } : {}),
         },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          ...(referredBySalesId != null
+            ? { referred_by_sales_id: referredBySalesId }
+            : {}),
+        }),
       });
       if (!res.ok) {
         let detail = "Submission failed";
