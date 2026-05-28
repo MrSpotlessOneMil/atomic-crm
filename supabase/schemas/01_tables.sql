@@ -97,7 +97,9 @@ create table public.sales (
     administrator boolean not null,
     user_id uuid not null,
     avatar jsonb,
-    disabled boolean not null default false
+    disabled boolean not null default false,
+    stripe_account_id text,
+    stripe_account_status text
 );
 
 create unique index uq__sales__user_id on public.sales using btree (user_id);
@@ -140,6 +142,7 @@ create table public.deal_payouts (
     created_at timestamp with time zone not null default now(),
     approved_at timestamp with time zone,
     paid_at timestamp with time zone,
+    stripe_transfer_id text,
     constraint deal_payouts_status_check check (status in ('pending','approved','paid','void'))
 );
 
