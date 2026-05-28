@@ -100,6 +100,14 @@ const DealMiscInputs = () => {
         helperText={false}
         validate={required()}
       />
+      <NumberInput
+        source="commission_rate_override"
+        label="Commission rate override (0.0 - 1.0)"
+        helperText="Leave blank to use the team default"
+        min={0}
+        max={1}
+        step={0.005}
+      />
     </div>
   );
 };
