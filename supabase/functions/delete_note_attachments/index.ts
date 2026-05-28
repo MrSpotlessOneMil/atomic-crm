@@ -1,6 +1,9 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { AuthMiddleware } from "../_shared/authentication.ts";
+import { type User } from "jsr:@supabase/supabase-js@2";
+import { AuthMiddleware, UserMiddleware } from "../_shared/authentication.ts";
+import { getUserSale } from "../_shared/getUserSale.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
+import { createErrorResponse } from "../_shared/utils.ts";
 
 const ATTACHMENTS_BUCKET =
   Deno.env.get("VITE_ATTACHMENTS_BUCKET") || "attachments";
@@ -21,9 +24,18 @@ type WebhookPayload = {
   record?: NoteRecord | null;
 };
 
-const deleteNoteAttachments = async (req: Request) => {
+const deleteNoteAttachments = async (req: Request, user?: User) => {
   if (req.method !== "POST") {
     return jsonResponse({ error: "Method Not Allowed" }, 405);
+  }
+
+  if (!user) {
+    return createErrorResponse(401, "Unauthorized");
+  }
+
+  const currentUserSale = await getUserSale(user);
+  if (!currentUserSale) {
+    return createErrorResponse(401, "Unauthorized");
   }
 
   const payload = (await req.json()) as WebhookPayload;
@@ -34,6 +46,20 @@ const deleteNoteAttachments = async (req: Request) => {
       status: "skipped",
       reason: "no_paths_to_delete",
     });
+  }
+
+  // Defense in depth: only allow deletion of paths the caller owns. Path
+  // format is `<sales_id>/<filename>` per Phase 2.1. Admins bypass the check.
+  if (!currentUserSale.administrator) {
+    const ownerPrefix = `${currentUserSale.id}/`;
+    const foreignPath = paths.find((path) => !path.startsWith(ownerPrefix));
+    if (foreignPath) {
+      console.warn("Rejected cross-owner attachment delete", {
+        sales_id: currentUserSale.id,
+        path: foreignPath,
+      });
+      return createErrorResponse(403, "Forbidden");
+    }
   }
 
   const { error } = await supabaseAdmin.storage
@@ -55,7 +81,9 @@ const deleteNoteAttachments = async (req: Request) => {
 };
 
 Deno.serve(async (req: Request) =>
-  AuthMiddleware(req, async (req: Request) => deleteNoteAttachments(req)),
+  AuthMiddleware(req, async (req: Request) =>
+    UserMiddleware(req, (req, user) => deleteNoteAttachments(req, user)),
+  ),
 );
 
 const getPathsToDelete = (payload: WebhookPayload): string[] => {

@@ -198,17 +198,27 @@ async function patchUser(req: Request, currentUserSale: any) {
     return createErrorResponse(404, "Not Found");
   }
 
+  const isAdminCaller = !!currentUserSale.administrator;
+  const isSelf = currentUserSale.id === sale.id;
+
   // Users can only update their own profile unless they are an administrator
-  if (!currentUserSale.administrator && currentUserSale.id !== sale.id) {
+  if (!isAdminCaller && !isSelf) {
     return createErrorResponse(401, "Not Authorized");
   }
 
+  // Build the auth.users update. Non-admins can only change their own name,
+  // email, and avatar — never ban_duration (which would let a disabled rep
+  // re-enable themselves) and never the disabled/administrator flags.
+  const authUpdates: Record<string, unknown> = {
+    email,
+    user_metadata: { first_name, last_name },
+  };
+  if (isAdminCaller) {
+    authUpdates.ban_duration = disabled ? "87600h" : "none";
+  }
+
   const { data, error: userError } =
-    await supabaseAdmin.auth.admin.updateUserById(sale.user_id, {
-      email,
-      ban_duration: disabled ? "87600h" : "none",
-      user_metadata: { first_name, last_name },
-    });
+    await supabaseAdmin.auth.admin.updateUserById(sale.user_id, authUpdates);
 
   if (!data?.user || userError) {
     console.error("Error patching user:", userError);
@@ -219,8 +229,8 @@ async function patchUser(req: Request, currentUserSale: any) {
     await updateSaleAvatar(data.user.id, avatar);
   }
 
-  // Only administrators can update the administrator and disabled status
-  if (!currentUserSale.administrator) {
+  // Only administrators can update the administrator and disabled status.
+  if (!isAdminCaller) {
     const { data: new_sale } = await supabaseAdmin
       .from("sales")
       .select("*")
