@@ -400,6 +400,19 @@ const applyFullTextSearch = (columns: string[]) => (params: GetListParams) => {
   };
 };
 
+const getCurrentSalesId = async (): Promise<string | number | null> => {
+  const supabase = getSupabaseClient();
+  const { data: session } = await supabase.auth.getSession();
+  const userId = session?.session?.user?.id;
+  if (!userId) return null;
+  const { data: sale } = await supabase
+    .from("sales")
+    .select("id")
+    .eq("user_id", userId)
+    .single();
+  return sale?.id ?? null;
+};
+
 const uploadToBucket = async (fi: RAFile) => {
   if (!fi.src.startsWith("blob:") && !fi.src.startsWith("data:")) {
     // Sign URL check if path exists in the bucket
@@ -433,11 +446,16 @@ const uploadToBucket = async (fi: RAFile) => {
     return fi;
   }
 
+  const salesId = await getCurrentSalesId();
+  if (salesId == null) {
+    throw new Error("Cannot upload attachment: no authenticated sales user");
+  }
+
   const file = fi.rawFile;
   const fileParts = file.name.split(".");
   const fileExt = fileParts.length > 1 ? `.${file.name.split(".").pop()}` : "";
   const fileName = `${Math.random()}${fileExt}`;
-  const filePath = `${fileName}`;
+  const filePath = `${salesId}/${fileName}`;
   const { error: uploadError } = await getSupabaseClient()
     .storage.from(ATTACHMENTS_BUCKET)
     .upload(filePath, dataContent);
