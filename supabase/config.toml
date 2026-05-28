@@ -184,3 +184,5 @@ verify_jwt = false
 verify_jwt = false
 [functions.weekly_digest]
 verify_jwt = false
+[functions.inbound_lead_reply]
+verify_jwt = false
