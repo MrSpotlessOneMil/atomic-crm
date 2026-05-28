@@ -182,6 +182,7 @@ export const frenchCrmMessages = {
         before_this_month: "Avant ce mois-ci",
         before_this_week: "Avant cette semaine",
         managed_by_me: "Géré par moi",
+        unassigned: "Non assigné",
         search: "Rechercher nom, entreprise...",
         this_week: "Cette semaine",
         today: "Aujourd'hui",
