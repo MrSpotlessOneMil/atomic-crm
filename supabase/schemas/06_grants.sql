@@ -65,6 +65,10 @@ grant all on function public.set_sales_id_default() to anon;
 grant all on function public.set_sales_id_default() to authenticated;
 grant all on function public.set_sales_id_default() to service_role;
 
+grant all on function public.mark_onboarding_completed() to anon;
+grant all on function public.mark_onboarding_completed() to authenticated;
+grant all on function public.mark_onboarding_completed() to service_role;
+
 grant all on function public.handle_deal_won_payout() to anon;
 grant all on function public.handle_deal_won_payout() to authenticated;
 grant all on function public.handle_deal_won_payout() to service_role;

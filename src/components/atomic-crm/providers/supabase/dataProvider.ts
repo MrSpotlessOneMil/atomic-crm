@@ -260,6 +260,14 @@ const getDataProviderWithCustomMethods = () => {
       }
       return data?.reply ?? "";
     },
+    async markOnboardingCompleted() {
+      const { error } = await getSupabaseClient().rpc(
+        "mark_onboarding_completed",
+      );
+      if (error) {
+        console.warn("mark_onboarding_completed failed", error);
+      }
+    },
     async osirisAssistantStream(
       messages: Array<{ role: "user" | "assistant"; content: string }>,
       onDelta: (textDelta: string) => void,

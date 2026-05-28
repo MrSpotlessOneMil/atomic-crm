@@ -9,11 +9,11 @@ export const onboardingStorageKey = (salesId: string | number) =>
 
 /**
  * Redirects newly signed-up reps to the onboarding wizard the first time they
- * land in the authenticated app. The completion flag is written to
- * localStorage by `OnboardingPage` (both on finish and on skip).
+ * land in the authenticated app. Prefers the server-side
+ * sales.onboarding_completed_at timestamp; falls back to localStorage so
+ * existing reps who completed pre-server-flag don't re-see the wizard.
  *
- * Admins are exempted so existing accounts and the initial Spotless admin
- * account never see the wizard.
+ * Admins are exempted.
  */
 export const useOnboardingRedirect = () => {
   const { identity, isPending } = useGetIdentity();
@@ -25,13 +25,18 @@ export const useOnboardingRedirect = () => {
     if (location.pathname.startsWith("/onboarding")) return;
     if ((identity as { administrator?: boolean }).administrator) return;
 
+    const serverDone = !!(
+      identity as { onboarding_completed_at?: string | null }
+    ).onboarding_completed_at;
+    if (serverDone) return;
+
     try {
       const done = localStorage.getItem(onboardingStorageKey(identity.id));
       if (!done) {
         navigate("/onboarding", { replace: true });
       }
     } catch {
-      // localStorage may be unavailable (private mode, etc.). Fail open.
+      // localStorage may be unavailable. Fail open.
     }
   }, [identity, isPending, location.pathname, navigate]);
 };

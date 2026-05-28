@@ -100,7 +100,8 @@ create table public.sales (
     avatar jsonb,
     disabled boolean not null default false,
     stripe_account_id text,
-    stripe_account_status text
+    stripe_account_status text,
+    onboarding_completed_at timestamp with time zone
 );
 
 create unique index uq__sales__user_id on public.sales using btree (user_id);
