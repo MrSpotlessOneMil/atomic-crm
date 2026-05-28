@@ -59,6 +59,10 @@ export const defaultTaskTypes = [
   { value: "call", label: "Call" },
 ];
 
+export const defaultPayouts = {
+  defaultRate: 0.1,
+};
+
 export const defaultConfiguration: ConfigurationContextValue = {
   companySectors: defaultCompanySectors,
   currency: defaultCurrency,
@@ -70,4 +74,5 @@ export const defaultConfiguration: ConfigurationContextValue = {
   title: defaultTitle,
   darkModeLogo: defaultDarkModeLogo,
   lightModeLogo: defaultLightModeLogo,
+  payouts: defaultPayouts,
 };

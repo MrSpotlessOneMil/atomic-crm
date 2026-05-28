@@ -2,6 +2,7 @@ import { useMutation } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ArrowRight,
+  Banknote,
   CheckCircle2,
   DollarSign,
   Loader2,
@@ -383,7 +384,7 @@ const ReadyStep = ({
         })}
       </p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Button
           variant="default"
           className="h-auto py-4 flex flex-col items-start gap-1"
@@ -393,6 +394,18 @@ const ReadyStep = ({
           <span className="font-medium">
             {translate("crm.onboarding.ready.add_contact", {
               _: "Add your first contact",
+            })}
+          </span>
+        </Button>
+        <Button
+          variant="outline"
+          className="h-auto py-4 flex flex-col items-start gap-1"
+          onClick={() => onFinish("/payouts")}
+        >
+          <Banknote className="w-4 h-4" />
+          <span className="font-medium">
+            {translate("crm.onboarding.ready.payouts", {
+              _: "See your payouts",
             })}
           </span>
         </Button>
