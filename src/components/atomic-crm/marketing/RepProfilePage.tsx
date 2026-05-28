@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
+import { BookingWidget, type AvailabilityWindow } from "./BookingWidget";
 import { LeadCaptureForm } from "./LeadCaptureForm";
 
 const FUNCTION_BASE =
@@ -22,6 +23,7 @@ type Profile = {
   wonAmount: number;
   streak: number;
   badges: string[];
+  availability?: AvailabilityWindow[];
 };
 
 const fetchProfile = async (id: string): Promise<Profile> => {
@@ -129,11 +131,33 @@ export const RepProfilePage = () => {
         </div>
       </section>
 
+      {data.availability && data.availability.length > 0 ? (
+        <section className="px-6 py-16 border-b">
+          <div className="max-w-2xl mx-auto space-y-6">
+            <div className="text-center space-y-2">
+              <h2 className="text-3xl font-semibold">
+                Book a quote with {data.first_name}
+              </h2>
+              <p className="text-muted-foreground">
+                Pick a time that works and lock in a quote conversation.
+              </p>
+            </div>
+            <BookingWidget
+              salesId={data.id}
+              availability={data.availability}
+              repFirstName={data.first_name}
+            />
+          </div>
+        </section>
+      ) : null}
+
       <section className="px-6 py-16 border-b bg-muted/30">
         <div className="max-w-2xl mx-auto space-y-6">
           <div className="text-center space-y-2">
             <h2 className="text-3xl font-semibold">
-              Hire {data.first_name} for a clean
+              {data.availability && data.availability.length > 0
+                ? `Or just ask for a quote`
+                : `Hire ${data.first_name} for a clean`}
             </h2>
             <p className="text-muted-foreground">
               Send a request and {data.first_name} will get back to you with a

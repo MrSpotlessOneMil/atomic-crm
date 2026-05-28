@@ -37,6 +37,13 @@ const handle = async (req: Request) => {
     .eq("stage", "won")
     .limit(5000);
 
+  const { data: availability } = await supabaseAdmin
+    .from("rep_availability")
+    .select("day_of_week, start_time, end_time")
+    .eq("sales_id", salesId)
+    .order("day_of_week", { ascending: true })
+    .order("start_time", { ascending: true });
+
   const wonCount = wonDeals?.length ?? 0;
   const wonAmount = (wonDeals ?? []).reduce(
     (sum, d) => sum + (d.amount ?? 0),
@@ -84,6 +91,7 @@ const handle = async (req: Request) => {
       wonAmount,
       streak,
       badges,
+      availability: availability ?? [],
     }),
     {
       headers: { "Content-Type": "application/json", ...corsHeaders },

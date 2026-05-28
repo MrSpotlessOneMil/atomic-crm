@@ -186,13 +186,38 @@ export type NotificationType =
   | "comment_on_post"
   | "lead_assigned"
   | "payout_approved"
-  | "payout_paid";
+  | "payout_paid"
+  | "booking_created";
 
 export type Notification = {
   sales_id: Identifier;
   type: NotificationType;
   payload: Record<string, unknown>;
   read_at?: string | null;
+  created_at: string;
+} & Pick<RaRecord, "id">;
+
+export type RepAvailability = {
+  sales_id: Identifier;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  created_at: string;
+} & Pick<RaRecord, "id">;
+
+export type BookingStatus =
+  | "scheduled"
+  | "completed"
+  | "canceled"
+  | "no_show";
+
+export type Booking = {
+  sales_id: Identifier;
+  contact_id?: Identifier | null;
+  scheduled_for: string;
+  duration_minutes: number;
+  notes?: string | null;
+  status: BookingStatus;
   created_at: string;
 } & Pick<RaRecord, "id">;
 

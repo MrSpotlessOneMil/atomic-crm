@@ -24,6 +24,7 @@ import { Layout } from "../layout/Layout";
 import { MobileLayout } from "../layout/MobileLayout";
 import { SignupPage } from "../login/SignupPage";
 import { ConfirmationRequired } from "../login/ConfirmationRequired";
+import { BookingsPage } from "../bookings/BookingsPage";
 import { CommunityPage } from "../community/CommunityPage";
 import { LeaderboardPage } from "../leaderboard/LeaderboardPage";
 import { AboutOsirisPage } from "../marketing/AboutOsirisPage";
@@ -284,6 +285,7 @@ const DesktopAdmin = (
         <Route path={LeaderboardPage.path} element={<LeaderboardPage />} />
         <Route path={PayoutsPage.path} element={<PayoutsPage />} />
         <Route path={CommunityPage.path} element={<CommunityPage />} />
+        <Route path={BookingsPage.path} element={<BookingsPage />} />
       </CustomRoutes>
       <Resource name="deals" {...deals} />
       <Resource name="contacts" {...contacts} />
@@ -297,6 +299,8 @@ const DesktopAdmin = (
       <Resource name="community_posts" />
       <Resource name="community_comments" />
       <Resource name="notifications" />
+      <Resource name="rep_availability" />
+      <Resource name="bookings" />
     </Admin>
   );
 };
@@ -364,6 +368,7 @@ const MobileAdmin = (
           <Route path={LeaderboardPage.path} element={<LeaderboardPage />} />
           <Route path={PayoutsPage.path} element={<PayoutsPage />} />
           <Route path={CommunityPage.path} element={<CommunityPage />} />
+          <Route path={BookingsPage.path} element={<BookingsPage />} />
         </CustomRoutes>
         <Resource
           name="contacts"

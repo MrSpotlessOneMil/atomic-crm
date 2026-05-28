@@ -613,6 +613,39 @@ begin
 end;
 $$;
 
+CREATE OR REPLACE FUNCTION "public"."notify_on_booking_created"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+declare
+  notif_id bigint;
+  notif_payload jsonb;
+  contact_first text;
+  contact_last text;
+begin
+  if NEW.contact_id is not null then
+    select first_name, last_name into contact_first, contact_last
+    from public.contacts where id = NEW.contact_id;
+  end if;
+
+  notif_payload := jsonb_build_object(
+    'booking_id', NEW.id,
+    'contact_id', NEW.contact_id,
+    'first_name', contact_first,
+    'last_name', contact_last,
+    'scheduled_for', NEW.scheduled_for,
+    'duration_minutes', NEW.duration_minutes
+  );
+
+  insert into public.notifications (sales_id, type, payload)
+  values (NEW.sales_id, 'booking_created', notif_payload)
+  returning id into notif_id;
+
+  perform public.send_notification_email(notif_id, NEW.sales_id, 'booking_created', notif_payload);
+  return NEW;
+end;
+$$;
+
 CREATE OR REPLACE FUNCTION "public"."notify_on_payout_status"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'

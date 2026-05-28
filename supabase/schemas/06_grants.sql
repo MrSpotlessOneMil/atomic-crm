@@ -81,6 +81,10 @@ grant all on function public.notify_on_payout_status() to anon;
 grant all on function public.notify_on_payout_status() to authenticated;
 grant all on function public.notify_on_payout_status() to service_role;
 
+grant all on function public.notify_on_booking_created() to anon;
+grant all on function public.notify_on_booking_created() to authenticated;
+grant all on function public.notify_on_booking_created() to service_role;
+
 grant all on function public.get_edge_function_url(text) to anon;
 grant all on function public.get_edge_function_url(text) to authenticated;
 grant all on function public.get_edge_function_url(text) to service_role;
@@ -146,6 +150,14 @@ grant all on table public.notifications to anon;
 grant all on table public.notifications to authenticated;
 grant all on table public.notifications to service_role;
 
+grant all on table public.rep_availability to anon;
+grant all on table public.rep_availability to authenticated;
+grant all on table public.rep_availability to service_role;
+
+grant all on table public.bookings to anon;
+grant all on table public.bookings to authenticated;
+grant all on table public.bookings to service_role;
+
 -- View grants
 grant all on table public.activity_log to anon;
 grant all on table public.activity_log to authenticated;
@@ -203,6 +215,14 @@ grant all on sequence public.community_comments_id_seq to service_role;
 grant all on sequence public.notifications_id_seq to anon;
 grant all on sequence public.notifications_id_seq to authenticated;
 grant all on sequence public.notifications_id_seq to service_role;
+
+grant all on sequence public.rep_availability_id_seq to anon;
+grant all on sequence public.rep_availability_id_seq to authenticated;
+grant all on sequence public.rep_availability_id_seq to service_role;
+
+grant all on sequence public.bookings_id_seq to anon;
+grant all on sequence public.bookings_id_seq to authenticated;
+grant all on sequence public.bookings_id_seq to service_role;
 
 grant all on sequence public.sales_id_seq to anon;
 grant all on sequence public.sales_id_seq to authenticated;

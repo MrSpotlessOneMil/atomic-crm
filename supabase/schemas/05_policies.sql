@@ -26,6 +26,8 @@ alter table public.deal_payouts enable row level security;
 alter table public.community_posts enable row level security;
 alter table public.community_comments enable row level security;
 alter table public.notifications enable row level security;
+alter table public.rep_availability enable row level security;
+alter table public.bookings enable row level security;
 
 -- Companies
 create policy "Companies select for owner or admin" on public.companies
@@ -315,3 +317,57 @@ create policy "Notifications update self" on public.notifications
 create policy "Notifications delete self" on public.notifications
   for delete to authenticated
   using (sales_id = (select id from public.sales where user_id = auth.uid()));
+
+-- Rep availability: reps manage their own; admins manage everyone. Booking
+-- function reads availability via service role for public prospects.
+create policy "Rep availability select for owner or admin" on public.rep_availability
+  for select to authenticated
+  using (
+    public.is_admin()
+    or sales_id = (select id from public.sales where user_id = auth.uid())
+  );
+create policy "Rep availability insert for owner or admin" on public.rep_availability
+  for insert to authenticated
+  with check (
+    sales_id is null
+    or sales_id = (select id from public.sales where user_id = auth.uid())
+    or public.is_admin()
+  );
+create policy "Rep availability update for owner or admin" on public.rep_availability
+  for update to authenticated
+  using (
+    public.is_admin()
+    or sales_id = (select id from public.sales where user_id = auth.uid())
+  )
+  with check (
+    public.is_admin()
+    or sales_id = (select id from public.sales where user_id = auth.uid())
+  );
+create policy "Rep availability delete for owner or admin" on public.rep_availability
+  for delete to authenticated
+  using (
+    public.is_admin()
+    or sales_id = (select id from public.sales where user_id = auth.uid())
+  );
+
+-- Bookings: rep sees / updates their own; admin sees all. Inserts only via
+-- the public book_slot edge function (service role).
+create policy "Bookings select for owner or admin" on public.bookings
+  for select to authenticated
+  using (
+    public.is_admin()
+    or sales_id = (select id from public.sales where user_id = auth.uid())
+  );
+create policy "Bookings update for owner or admin" on public.bookings
+  for update to authenticated
+  using (
+    public.is_admin()
+    or sales_id = (select id from public.sales where user_id = auth.uid())
+  )
+  with check (
+    public.is_admin()
+    or sales_id = (select id from public.sales where user_id = auth.uid())
+  );
+create policy "Bookings delete for admin" on public.bookings
+  for delete to authenticated
+  using (public.is_admin());
