@@ -78,3 +78,8 @@ create or replace trigger on_auth_user_created
 create or replace trigger on_auth_user_updated
     after update on auth.users
     for each row execute function public.handle_update_user();
+
+-- Auto-create a payout row when a deal moves to stage 'won'
+create or replace trigger deal_won_payout_trigger
+    after insert or update of stage on public.deals
+    for each row execute function public.handle_deal_won_payout();
