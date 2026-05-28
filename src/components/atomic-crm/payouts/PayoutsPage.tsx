@@ -1,5 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Banknote, Check, Clock, DollarSign, Hourglass } from "lucide-react";
+import {
+  Banknote,
+  Check,
+  Clock,
+  DollarSign,
+  Download,
+  Hourglass,
+} from "lucide-react";
 import {
   useDataProvider,
   useGetIdentity,
@@ -20,7 +27,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import type { Deal, DealPayout, DealPayoutStatus } from "../types";
+import type { Deal, DealPayout, DealPayoutStatus, Sale } from "../types";
 
 const STATUS_LABEL: Record<DealPayoutStatus, string> = {
   pending: "Pending",
@@ -46,6 +53,27 @@ const formatMoney = (cents: number) =>
     maximumFractionDigits: 2,
   }).format(cents / 100);
 
+const csvEscape = (value: unknown): string => {
+  const s = value == null ? "" : String(value);
+  if (/[",\n\r]/.test(s)) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+};
+
+const downloadCsv = (filename: string, rows: string[][]) => {
+  const body = rows.map((r) => r.map(csvEscape).join(",")).join("\r\n");
+  const blob = new Blob([body], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
 export const PayoutsPage = () => {
   const { identity } = useGetIdentity();
   const isAdmin = !!(identity as { administrator?: boolean })?.administrator;
@@ -64,6 +92,66 @@ export const PayoutsPage = () => {
     { enabled: dealIds.length > 0 },
   );
   const dealById = new Map((deals ?? []).map((d) => [String(d.id), d]));
+
+  const salesIds = Array.from(
+    new Set((payouts ?? []).map((p) => p.sales_id)),
+  );
+  const { data: salesPeople } = useGetMany<Sale>(
+    "sales",
+    { ids: salesIds },
+    { enabled: isAdmin && salesIds.length > 0 },
+  );
+  const saleById = new Map(
+    (salesPeople ?? []).map((s) => [String(s.id), s]),
+  );
+
+  const handleExport = () => {
+    const header = isAdmin
+      ? [
+          "Payout ID",
+          "Created",
+          "Status",
+          "Rep",
+          "Deal",
+          "Commission rate",
+          "Amount (USD)",
+          "Approved at",
+          "Paid at",
+        ]
+      : [
+          "Payout ID",
+          "Created",
+          "Status",
+          "Deal",
+          "Commission rate",
+          "Amount (USD)",
+          "Approved at",
+          "Paid at",
+        ];
+    const rows: string[][] = [header];
+    for (const p of payouts ?? []) {
+      const deal = dealById.get(String(p.deal_id));
+      const dealLabel = deal?.name ?? `Deal #${p.deal_id}`;
+      const sale = saleById.get(String(p.sales_id));
+      const repLabel = sale
+        ? `${sale.first_name ?? ""} ${sale.last_name ?? ""}`.trim()
+        : `Sales #${p.sales_id}`;
+      const baseCols = [
+        String(p.id),
+        p.created_at,
+        p.status,
+        ...(isAdmin ? [repLabel] : []),
+        dealLabel,
+        `${(p.commission_rate * 100).toFixed(2)}%`,
+        (p.amount_cents / 100).toFixed(2),
+        p.approved_at ?? "",
+        p.paid_at ?? "",
+      ];
+      rows.push(baseCols);
+    }
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadCsv(`osiris-payouts-${stamp}.csv`, rows);
+  };
 
   const totals = (payouts ?? []).reduce(
     (acc, p) => {
@@ -89,6 +177,14 @@ export const PayoutsPage = () => {
             </p>
           </div>
         </div>
+        <Button
+          variant="outline"
+          onClick={handleExport}
+          disabled={!payouts || payouts.length === 0}
+        >
+          <Download className="w-4 h-4 mr-2" />
+          Export CSV
+        </Button>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
