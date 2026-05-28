@@ -182,3 +182,5 @@ verify_jwt = false
 verify_jwt = false
 [functions.book_slot]
 verify_jwt = false
+[functions.weekly_digest]
+verify_jwt = false
