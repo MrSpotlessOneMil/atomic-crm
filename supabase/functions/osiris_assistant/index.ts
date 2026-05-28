@@ -1,6 +1,13 @@
 // OSIRIS sales assistant — proxies chat messages to the Anthropic Messages API
 // with an OSIRIS-specific system prompt. Requires ANTHROPIC_API_KEY to be set
 // as a function secret. Without it, returns 503 so the UI degrades gracefully.
+//
+// Supports two modes:
+//   POST /              -> non-streaming, returns { reply: "..." }
+//   POST /?stream=1     -> Server-Sent Events stream of text deltas; the body
+//                          is forwarded straight from the Anthropic SSE response.
+//                          The client should read events of type
+//                          "content_block_delta" and concat their text fields.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
@@ -75,6 +82,9 @@ const handleChat = async (req: Request) => {
     return createErrorResponse(400, "messages required");
   }
 
+  const url = new URL(req.url);
+  const wantStream = url.searchParams.get("stream") === "1";
+
   let upstream: Response;
   try {
     upstream = await fetch(ANTHROPIC_API_URL, {
@@ -89,6 +99,7 @@ const handleChat = async (req: Request) => {
         max_tokens: MAX_TOKENS,
         system: SYSTEM_PROMPT,
         messages,
+        stream: wantStream,
       }),
     });
   } catch (err) {
@@ -100,6 +111,19 @@ const handleChat = async (req: Request) => {
     const errBody = await upstream.text().catch(() => "");
     console.error(`Anthropic ${upstream.status}: ${errBody}`);
     return createErrorResponse(502, "Assistant upstream error");
+  }
+
+  if (wantStream && upstream.body) {
+    // Forward the SSE stream straight to the client.
+    return new Response(upstream.body, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        ...corsHeaders,
+      },
+    });
   }
 
   const data = await upstream.json();

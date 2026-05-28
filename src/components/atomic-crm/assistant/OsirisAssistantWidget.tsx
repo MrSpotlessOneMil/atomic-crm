@@ -56,13 +56,48 @@ export const OsirisAssistantWidget = ({
         ...messages,
         { role: "user", content: prompt },
       ];
-      setMessages(next);
+      setMessages([
+        ...next,
+        { role: "assistant", content: "" }, // placeholder we'll stream into
+      ]);
       setInput("");
-      const reply = await dataProvider.osirisAssistantChat(buildOutgoing(next));
+
+      const outgoing = buildOutgoing(next);
+      if (typeof dataProvider.osirisAssistantStream === "function") {
+        return await dataProvider.osirisAssistantStream(outgoing, (delta) => {
+          setMessages((prev) => {
+            const copy = prev.slice();
+            const last = copy[copy.length - 1];
+            if (last && last.role === "assistant") {
+              copy[copy.length - 1] = {
+                ...last,
+                content: last.content + delta,
+              };
+            }
+            return copy;
+          });
+          requestAnimationFrame(() => {
+            scrollRef.current?.scrollTo({
+              top: scrollRef.current.scrollHeight,
+            });
+          });
+        });
+      }
+
+      const reply = await dataProvider.osirisAssistantChat(outgoing);
+      setMessages((prev) => {
+        const copy = prev.slice();
+        const last = copy[copy.length - 1];
+        if (last && last.role === "assistant" && last.content === "") {
+          copy[copy.length - 1] = { ...last, content: reply };
+        } else {
+          copy.push({ role: "assistant", content: reply });
+        }
+        return copy;
+      });
       return reply;
     },
-    onSuccess: (reply) => {
-      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+    onSuccess: () => {
       requestAnimationFrame(() => {
         scrollRef.current?.scrollTo({
           top: scrollRef.current.scrollHeight,
@@ -75,7 +110,22 @@ export const OsirisAssistantWidget = ({
         type: "error",
         messageArgs: { _: err.message || "Assistant failed" },
       });
-      setMessages((prev) => prev.slice(0, -1));
+      // Pop the placeholder assistant message AND the user's message so the
+      // input doesn't end up with a dangling unanswered turn.
+      setMessages((prev) => {
+        const trimmed = prev.slice();
+        if (
+          trimmed.length &&
+          trimmed[trimmed.length - 1].role === "assistant" &&
+          trimmed[trimmed.length - 1].content === ""
+        ) {
+          trimmed.pop();
+        }
+        if (trimmed.length && trimmed[trimmed.length - 1].role === "user") {
+          trimmed.pop();
+        }
+        return trimmed;
+      });
     },
   });
 

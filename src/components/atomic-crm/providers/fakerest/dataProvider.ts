@@ -324,6 +324,18 @@ export const createDataProvider = ({
       await new Promise((r) => setTimeout(r, 600));
       return "(demo mode) OSIRIS isn't wired up in FakeRest. Connect Supabase and set ANTHROPIC_API_KEY to chat for real.";
     },
+    osirisAssistantStream: async (
+      _messages: Array<{ role: "user" | "assistant"; content: string }>,
+      onDelta: (textDelta: string) => void,
+    ): Promise<string> => {
+      const reply =
+        "(demo mode) OSIRIS isn't wired up in FakeRest. Connect Supabase and set ANTHROPIC_API_KEY to chat for real.";
+      for (const word of reply.split(/(\s+)/)) {
+        await new Promise((r) => setTimeout(r, 30));
+        onDelta(word);
+      }
+      return reply;
+    },
   };
 
   const dataProvider = withLifecycleCallbacks(
