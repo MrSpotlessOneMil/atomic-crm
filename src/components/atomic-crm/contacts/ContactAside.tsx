@@ -1,4 +1,4 @@
-import { useRecordContext, useTranslate } from "ra-core";
+import { useGetList, useRecordContext, useTranslate } from "ra-core";
 import { EditButton } from "@/components/admin/edit-button";
 import { DeleteButton } from "@/components/admin";
 import { ReferenceManyField } from "@/components/admin/reference-many-field";
@@ -12,7 +12,7 @@ import { ContactStatusSelector } from "./ContactInputs";
 import { ContactPersonalInfo } from "./ContactPersonalInfo";
 import { ContactBackgroundInfo } from "./ContactBackgroundInfo";
 import { AsideSection } from "../misc/AsideSection";
-import type { Contact } from "../types";
+import type { Contact, ContactNote } from "../types";
 import { ContactMergeButton } from "./ContactMergeButton";
 import { ExportVCardButton } from "./ExportVCardButton";
 
@@ -69,24 +69,10 @@ export const ContactAside = ({ link = "edit" }: { link?: "edit" | "show" }) => {
       </AsideSection>
 
       <AsideSection title="OSIRIS assistant">
-        <OsirisAssistantWidget
-          context={{
-            kind: "contact",
-            label:
-              `${record.first_name ?? ""} ${record.last_name ?? ""}`.trim() ||
-              `Contact #${record.id}`,
-            facts: [
-              record.title ? `Title: ${record.title}` : null,
-              record.company_name
-                ? `Company: ${record.company_name}`
-                : null,
-              record.status ? `Status: ${record.status}` : null,
-              record.background ? `Background: ${record.background}` : null,
-            ].filter((s): s is string => !!s),
-          }}
-        />
+        <ContactAssistant record={record} />
       </AsideSection>
 
+      {/* see ContactAssistant below */}
       {link !== "edit" && (
         <>
           <div className="mt-6 pt-6 border-t hidden sm:flex flex-col gap-2 items-start">
@@ -102,5 +88,39 @@ export const ContactAside = ({ link = "edit" }: { link?: "edit" | "show" }) => {
         </>
       )}
     </div>
+  );
+};
+
+const ContactAssistant = ({ record }: { record: Contact }) => {
+  // Pull the most recent notes so the assistant has real context to work from.
+  const { data: notes } = useGetList<ContactNote>("contact_notes", {
+    pagination: { page: 1, perPage: 20 },
+    sort: { field: "date", order: "DESC" },
+    filter: { contact_id: record.id },
+  });
+
+  const facts = [
+    record.title ? `Title: ${record.title}` : null,
+    record.company_name ? `Company: ${record.company_name}` : null,
+    record.status ? `Status: ${record.status}` : null,
+    record.background ? `Background: ${record.background}` : null,
+    ...((notes ?? []).slice(0, 8).map((n) => {
+      const when = n.date
+        ? new Date(n.date).toISOString().slice(0, 10)
+        : "unknown date";
+      return `Note (${when}): ${(n.text ?? "").slice(0, 400)}`;
+    }) as string[]),
+  ].filter((s): s is string => !!s);
+
+  return (
+    <OsirisAssistantWidget
+      context={{
+        kind: "contact",
+        label:
+          `${record.first_name ?? ""} ${record.last_name ?? ""}`.trim() ||
+          `Contact #${record.id}`,
+        facts,
+      }}
+    />
   );
 };
