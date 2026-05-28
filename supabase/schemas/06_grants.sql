@@ -81,6 +81,14 @@ grant all on function public.notify_on_payout_status() to anon;
 grant all on function public.notify_on_payout_status() to authenticated;
 grant all on function public.notify_on_payout_status() to service_role;
 
+grant all on function public.get_edge_function_url(text) to anon;
+grant all on function public.get_edge_function_url(text) to authenticated;
+grant all on function public.get_edge_function_url(text) to service_role;
+
+grant all on function public.send_notification_email(bigint, bigint, text, jsonb) to anon;
+grant all on function public.send_notification_email(bigint, bigint, text, jsonb) to authenticated;
+grant all on function public.send_notification_email(bigint, bigint, text, jsonb) to service_role;
+
 -- Table grants
 grant all on table public.companies to anon;
 grant all on table public.companies to authenticated;
