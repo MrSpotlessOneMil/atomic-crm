@@ -296,6 +296,7 @@ const DesktopAdmin = (
       <Resource name="deal_payouts" />
       <Resource name="community_posts" />
       <Resource name="community_comments" />
+      <Resource name="notifications" />
     </Admin>
   );
 };

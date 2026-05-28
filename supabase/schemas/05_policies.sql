@@ -25,6 +25,7 @@ alter table public.favicons_excluded_domains enable row level security;
 alter table public.deal_payouts enable row level security;
 alter table public.community_posts enable row level security;
 alter table public.community_comments enable row level security;
+alter table public.notifications enable row level security;
 
 -- Companies
 create policy "Companies select for owner or admin" on public.companies
@@ -300,3 +301,17 @@ create policy "Community comments delete author or admin" on public.community_co
     public.is_admin()
     or sales_id = (select id from public.sales where user_id = auth.uid())
   );
+
+-- Notifications: each rep sees only their own; updates (mark as read) limited
+-- to author. Inserts only via SECURITY DEFINER triggers, so blocked from the
+-- client. Deletes also limited to the rep (cleanup).
+create policy "Notifications select self" on public.notifications
+  for select to authenticated
+  using (sales_id = (select id from public.sales where user_id = auth.uid()));
+create policy "Notifications update self" on public.notifications
+  for update to authenticated
+  using (sales_id = (select id from public.sales where user_id = auth.uid()))
+  with check (sales_id = (select id from public.sales where user_id = auth.uid()));
+create policy "Notifications delete self" on public.notifications
+  for delete to authenticated
+  using (sales_id = (select id from public.sales where user_id = auth.uid()));

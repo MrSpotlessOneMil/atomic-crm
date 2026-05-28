@@ -92,3 +92,16 @@ create or replace trigger set_community_post_sales_id_trigger
 create or replace trigger set_community_comment_sales_id_trigger
     before insert on public.community_comments
     for each row execute function public.set_sales_id_default();
+
+-- Notifications
+create or replace trigger notify_on_community_comment_trigger
+    after insert on public.community_comments
+    for each row execute function public.notify_on_community_comment();
+
+create or replace trigger notify_on_lead_assignment_trigger
+    after insert or update of sales_id on public.contacts
+    for each row execute function public.notify_on_lead_assignment();
+
+create or replace trigger notify_on_payout_status_trigger
+    after update of status on public.deal_payouts
+    for each row execute function public.notify_on_payout_status();
