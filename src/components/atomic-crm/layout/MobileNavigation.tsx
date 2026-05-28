@@ -6,7 +6,18 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { Home, ListTodo, Plus, Settings, Users } from "lucide-react";
+import {
+  CalendarCheck,
+  DollarSign,
+  Home,
+  ListTodo,
+  MessageSquare,
+  MoreHorizontal,
+  Plus,
+  Settings,
+  Trophy,
+  Users,
+} from "lucide-react";
 import { useTranslate } from "ra-core";
 import { Link, matchPath, useLocation, useMatch } from "react-router";
 import { ContactCreateSheet } from "../contacts/ContactCreateSheet";
@@ -75,7 +86,7 @@ export const MobileNavigation = () => {
             label={translate("resources.tasks.name", { smart_count: 2 })}
             isActive={currentPath === "/tasks"}
           />
-          <SettingsButton />
+          <MoreButton />
         </>
       </div>
     </nav>
@@ -173,17 +184,72 @@ const CreateButton = () => {
   );
 };
 
-const SettingsButton = () => {
+const MoreButton = () => {
   const translate = useTranslate();
   const location = useLocation();
-  const isActive = !!matchPath("/settings", location.pathname);
+  const isActive =
+    !!matchPath("/settings", location.pathname) ||
+    !!matchPath("/payouts/*", location.pathname) ||
+    !!matchPath("/leaderboard/*", location.pathname) ||
+    !!matchPath("/community/*", location.pathname) ||
+    !!matchPath("/bookings/*", location.pathname);
+
+  const items: Array<{
+    href: string;
+    label: string;
+    Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  }> = [
+    {
+      href: "/payouts",
+      label: translate("crm.nav.payouts", { _: "Payouts" }),
+      Icon: DollarSign,
+    },
+    {
+      href: "/leaderboard",
+      label: translate("crm.nav.leaderboard", { _: "Leaderboard" }),
+      Icon: Trophy,
+    },
+    {
+      href: "/community",
+      label: translate("crm.nav.community", { _: "Community" }),
+      Icon: MessageSquare,
+    },
+    {
+      href: "/bookings",
+      label: translate("crm.nav.bookings", { _: "Bookings" }),
+      Icon: CalendarCheck,
+    },
+    {
+      href: "/settings",
+      label: translate("crm.settings.title"),
+      Icon: Settings,
+    },
+  ];
 
   return (
-    <NavigationButton
-      href="/settings"
-      Icon={Settings}
-      label={translate("crm.settings.title")}
-      isActive={isActive}
-    />
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          className={cn(
+            "flex-col gap-1 h-auto py-2 px-1 rounded-md w-16",
+            isActive ? null : "text-muted-foreground",
+          )}
+        >
+          <MoreHorizontal className="size-6" />
+          <span className="text-[0.6rem] font-medium">More</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {items.map((item) => (
+          <DropdownMenuItem key={item.href} asChild className="h-12 px-4">
+            <Link to={item.href} className="flex items-center gap-3 text-base">
+              <item.Icon className="size-5" />
+              {item.label}
+            </Link>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 };
