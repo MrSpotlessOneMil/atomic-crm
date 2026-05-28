@@ -23,6 +23,8 @@ alter table public.tasks enable row level security;
 alter table public.configuration enable row level security;
 alter table public.favicons_excluded_domains enable row level security;
 alter table public.deal_payouts enable row level security;
+alter table public.community_posts enable row level security;
+alter table public.community_comments enable row level security;
 
 -- Companies
 create policy "Companies select for owner or admin" on public.companies
@@ -244,3 +246,57 @@ create policy "Payouts update for admins" on public.deal_payouts
 create policy "Payouts delete for admins" on public.deal_payouts
   for delete to authenticated
   using (public.is_admin());
+
+-- Community: all authenticated reps can read everything; authors (or admins)
+-- can edit/delete their own posts and comments.
+create policy "Community posts read all" on public.community_posts
+  for select to authenticated using (true);
+create policy "Community posts insert as self" on public.community_posts
+  for insert to authenticated
+  with check (
+    sales_id is null
+    or sales_id = (select id from public.sales where user_id = auth.uid())
+    or public.is_admin()
+  );
+create policy "Community posts update author or admin" on public.community_posts
+  for update to authenticated
+  using (
+    public.is_admin()
+    or sales_id = (select id from public.sales where user_id = auth.uid())
+  )
+  with check (
+    public.is_admin()
+    or sales_id = (select id from public.sales where user_id = auth.uid())
+  );
+create policy "Community posts delete author or admin" on public.community_posts
+  for delete to authenticated
+  using (
+    public.is_admin()
+    or sales_id = (select id from public.sales where user_id = auth.uid())
+  );
+
+create policy "Community comments read all" on public.community_comments
+  for select to authenticated using (true);
+create policy "Community comments insert as self" on public.community_comments
+  for insert to authenticated
+  with check (
+    sales_id is null
+    or sales_id = (select id from public.sales where user_id = auth.uid())
+    or public.is_admin()
+  );
+create policy "Community comments update author or admin" on public.community_comments
+  for update to authenticated
+  using (
+    public.is_admin()
+    or sales_id = (select id from public.sales where user_id = auth.uid())
+  )
+  with check (
+    public.is_admin()
+    or sales_id = (select id from public.sales where user_id = auth.uid())
+  );
+create policy "Community comments delete author or admin" on public.community_comments
+  for delete to authenticated
+  using (
+    public.is_admin()
+    or sales_id = (select id from public.sales where user_id = auth.uid())
+  );
