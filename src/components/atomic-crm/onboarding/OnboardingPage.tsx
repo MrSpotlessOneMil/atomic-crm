@@ -48,6 +48,7 @@ export const OnboardingPage = () => {
   const { identity, isPending: identityPending } = useGetIdentity();
   const translate = useTranslate();
   const navigate = useNavigate();
+  const dataProvider = useDataProvider<CrmDataProvider>();
   const [stepIndex, setStepIndex] = useState(0);
 
   const { data: sale, refetch } = useGetOne<Sale>(
