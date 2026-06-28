@@ -13,7 +13,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
-import { getSalesNumber, toE164, salesSendsPaused } from "../_shared/quoSales.ts";
+import { getSalesNumber, toE164, salesSendsPaused, logSms } from "../_shared/quoSales.ts";
 import { runSalesAgentTurn } from "../_shared/salesAgent.ts";
 import { enrichFromMessage } from "../_shared/enrich.ts";
 
@@ -172,6 +172,18 @@ const handle = async (req: Request) => {
 
   // Record the inbound message (machine transcript + human timeline).
   await supabaseAdmin.from("agent_messages").insert({ contact_id: contactId, deal_id: dealId, direction: "inbound", body: text });
+  // Persist to the SMS analytics log (best-effort).
+  if (contactId) {
+    await logSms({
+      contactId,
+      direction: "inbound",
+      fromNumber: from,
+      toNumber: to,
+      body: text,
+      phoneNumberId: (msg.phoneNumberId as string) ?? null,
+      openphoneMessageId: (msg.id as string) ?? null,
+    });
+  }
   try {
     await supabaseAdmin.from("contact_notes").insert({
       contact_id: contactId,

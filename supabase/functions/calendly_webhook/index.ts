@@ -16,6 +16,7 @@ import { createErrorResponse } from "../_shared/utils.ts";
 import { toE164, salesSendsPaused } from "../_shared/quoSales.ts";
 import { REMINDERS, render } from "../_shared/salesCopy.ts";
 import { assignToCloser } from "../_shared/handoff.ts";
+import { recordBooking, cancelBooking } from "../_shared/bookings.ts";
 
 const ACTIVE_STAGES = ["lead", "contacted", "demo-booked", "demo-done", "proposal-sent", "in-negociation"];
 const repName = () => Deno.env.get("SALES_AGENT_NAME") || "Robin";
@@ -152,6 +153,18 @@ const handle = async (req: Request) => {
     contactId = ins.data.id;
   }
 
+  // Reminders + no-show recovery are SMS-only. Skip queuing them for a contact
+  // with no phone on file (an email-only booking) - otherwise they just fail in
+  // dispatch with "no phone for task".
+  let hasPhone = !!phone;
+  if (!hasPhone) {
+    const { data: c } = await supabaseAdmin.from("contacts").select("phone_jsonb").eq("id", contactId).maybeSingle();
+    const pj = c?.phone_jsonb;
+    hasPhone = Array.isArray(pj) && pj.some((e: any) =>
+      (typeof e === "string" && e.trim()) ||
+      (e && typeof e === "object" && typeof e.number === "string" && e.number.trim()));
+  }
+
   let dealId = await openDeal(contactId);
   if (!dealId && kind === "invitee.created") {
     const d = await supabaseAdmin
@@ -173,15 +186,17 @@ const handle = async (req: Request) => {
       .eq("contact_id", contactId)
       .eq("status", "pending")
       .in("task_type", ["reminder_sms", "no_show_check"]);
-    // One gentle rebook nudge in ~2h (skipped while sends are paused).
-    if (!paused) {
+    // Walk back the bookings row too (rep /bookings + weekly digest).
+    if (contactId) await cancelBooking({ contactId });
+    // One gentle rebook nudge in ~2h (SMS-only; skipped while sends paused or no phone).
+    if (!paused && hasPhone) {
       const calendly = (await supabaseAdmin.from("integration_secrets").select("value").eq("key", "CALENDLY_BOOKING_URL").single()).data?.value
         ?? "https://calendly.com/dominic-theosirisai/cleaning-gameplan";
       await supabaseAdmin.from("scheduled_tasks").insert({
         task_type: "nurture_sms",
         contact_id: contactId,
         deal_id: dealId,
-        payload: { content: `No worries {{first_name}}! Want to grab another time for the Robin Line demo? ${calendly} Txt STOP to stop.`, key: "rebook" },
+        payload: { content: `no worries {{first_name}}, want to grab another time for the robin line demo? ${calendly}`, key: "rebook" },
         run_at: new Date(Date.now() + 2 * 3600_000).toISOString(),
       });
     }
@@ -213,6 +228,17 @@ const handle = async (req: Request) => {
     await assignToCloser({ dealId, contactId, reason: "demo_booked", summary: `Demo booked for ${fmtDemoTime(start)}` });
   }
 
+  // Mirror the booked demo into the bookings table (rep /bookings + weekly
+  // digest + availability). Owned by the closer; idempotent + best-effort.
+  if (contactId) {
+    await recordBooking({
+      contactId,
+      scheduledFor: start,
+      durationMinutes: Math.max(15, Math.round((endMs - startMs) / 60_000)),
+      notes: `Demo booked via Calendly${name ? " - " + name : ""}`,
+    });
+  }
+
   // Replace any prior funnel tasks (nurture + stale reminders) with a fresh set.
   await supabaseAdmin
     .from("scheduled_tasks")
@@ -220,9 +246,9 @@ const handle = async (req: Request) => {
     .eq("contact_id", contactId)
     .eq("status", "pending");
 
-  // Reminder + no-show texting is skipped while sends are paused; the deal is
-  // still moved to demo-booked and handed to the closer above.
-  if (!paused) {
+  // Reminder + no-show texting is skipped while sends are paused or when the
+  // contact has no phone; the deal is still moved to demo-booked + handed off.
+  if (!paused && hasPhone) {
     const vars = { rep_name: repName(), demo_time: fmtDemoTime(start), join_link: joinLink || "" };
     const reminderRows = REMINDERS.map((r) => ({
       task_type: "reminder_sms",
@@ -251,7 +277,9 @@ const handle = async (req: Request) => {
     contact_id: contactId,
     text: paused
       ? `📅 Demo booked via Calendly for ${fmtDemoTime(start)} — logged to pipeline (auto-texts paused).`
-      : `📅 Demo booked via Calendly for ${fmtDemoTime(start)} — reminders + no-show check scheduled.`,
+      : hasPhone
+        ? `📅 Demo booked via Calendly for ${fmtDemoTime(start)} — reminders + no-show check scheduled.`
+        : `📅 Demo booked via Calendly for ${fmtDemoTime(start)} — no phone on file, SMS reminders skipped.`,
     date: new Date().toISOString(),
     status: "hot",
   });

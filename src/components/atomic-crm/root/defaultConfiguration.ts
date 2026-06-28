@@ -44,6 +44,8 @@ export const defaultDealCategories = [
   { value: "tiktok", label: "TikTok" },
   { value: "facebook", label: "Facebook" },
   { value: "cold-call", label: "Cold Call" },
+  { value: "website", label: "Website (Lead Magnet)" },
+  { value: "cold-email", label: "Cold Email" },
   { value: "inbound", label: "Inbound" },
   { value: "referral", label: "Referral" },
   { value: "other", label: "Other" },

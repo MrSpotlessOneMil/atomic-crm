@@ -12,7 +12,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
-import { toE164, salesSendsPaused } from "../_shared/quoSales.ts";
+import { toE164 } from "../_shared/quoSales.ts";
 import { OPENER, NURTURE, EMAIL_OPENER, EMAIL_NURTURE, render } from "../_shared/salesCopy.ts";
 
 type Body = {
@@ -29,7 +29,7 @@ type Body = {
 };
 
 const ACTIVE_STAGES = ["lead", "contacted", "demo-booked", "demo-done", "proposal-sent", "in-negociation"];
-const SOURCES = ["instagram", "tiktok", "facebook", "cold-call", "inbound", "referral", "other"];
+const SOURCES = ["instagram", "tiktok", "facebook", "cold-call", "website", "cold-email", "inbound", "referral", "other"];
 
 const trim = (s: unknown, max = 200): string =>
   typeof s === "string" ? s.trim().slice(0, max) : "";
@@ -42,7 +42,10 @@ function leadSource(raw: string): string {
   if (p.includes("insta") || p === "ig") return "instagram";
   if (p.includes("tik")) return "tiktok";
   if (p.includes("face") || p === "fb" || p.includes("meta")) return "facebook";
-  if (p.includes("web") || p.includes("site") || p.includes("land") || p.includes("form")) return "inbound";
+  // Lead-magnet website / landing-page opt-ins get their OWN source so they're
+  // visible + measurable in the CRM (previously collapsed into "inbound").
+  if (p.includes("web") || p.includes("site") || p.includes("land") || p.includes("form")) return "website";
+  if (p.includes("cold-email") || p.includes("cold_email") || p.includes("coldemail")) return "cold-email";
   if (p.includes("refer")) return "referral";
   return "inbound";
 }
@@ -183,12 +186,12 @@ const handle = async (req: Request) => {
   const flooded = (recentTasks ?? 0) > 60;
   if (flooded) console.warn("[lead_inbound] flood cap hit — skipping auto-text", { recentTasks });
 
-  // Global pause: log the lead into the CRM (done above) but send no auto-texts.
-  const paused = await salesSendsPaused();
-  if (paused) console.info("[lead_inbound] sends paused — logged lead, no auto-text");
+  // We enqueue the cadence even while sends are paused: dispatch_tasks HOLDS the
+  // queue during a pause (it no longer cancels), so tasks just wait and flush
+  // when sends resume. This guarantees no lead is ever logged without a cadence.
 
   let enqueued = 0;
-  if (!paused && !flooded && (!pending || pending.length === 0)) {
+  if (!flooded && (!pending || pending.length === 0)) {
     // {{first_name}} stays for send time; {{lead_magnet}} names what they grabbed.
     const vars = { rep_name: repName(), lead_magnet: magnet || "your free templates" };
     const now = Date.now();

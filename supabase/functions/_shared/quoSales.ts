@@ -53,11 +53,44 @@ export interface SendResult {
   body: unknown;
 }
 
+// Best-effort persistence of one SMS to the analytics log (sms_messages).
+// NEVER throws — logging must never break a send or a webhook. The inbox UI
+// reads OpenPhone live, so nothing reads this table yet; it exists to build a
+// queryable history for reply-rate / response-time metrics. Direction uses the
+// 'inbound'/'outbound' convention (consistent with agent_messages).
+export async function logSms(row: {
+  contactId: number;
+  direction: "inbound" | "outbound";
+  fromNumber: string;
+  toNumber: string;
+  body: string;
+  phoneNumberId?: string | null;
+  openphoneMessageId?: string | null;
+  salesId?: number | null;
+}): Promise<void> {
+  try {
+    await supabaseAdmin.from("sms_messages").insert({
+      contact_id: row.contactId,
+      phone_number_id: row.phoneNumberId ?? "",
+      from_number: row.fromNumber,
+      to_number: row.toNumber,
+      body: row.body,
+      direction: row.direction,
+      openphone_message_id: row.openphoneMessageId ?? null,
+      sales_id: row.salesId ?? null,
+    });
+  } catch (e) {
+    console.error("[quoSales] sms_messages log failed", e);
+  }
+}
+
 // Send one SMS from the sales number. Never throws — returns a structured
 // result so callers (the dispatcher) can mark tasks sent/failed and retry.
+// Pass opts.contactId to also persist the sent text to sms_messages (best-effort).
 export async function sendSalesSms(
   to: string,
   content: string,
+  opts?: { contactId?: number | null; salesId?: number | null },
 ): Promise<SendResult> {
   // Paused? Don't touch OpenPhone. Sentinel result lets callers tell "paused"
   // apart from a real failure (so they cancel the task instead of retrying).
@@ -88,6 +121,20 @@ export async function sendSalesSms(
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) console.error("Quo sales send failed:", res.status, body);
+    // Persist the sent text for analytics (best-effort; only when we know who).
+    if (res.ok && opts?.contactId) {
+      const data = (body as { data?: Record<string, unknown> })?.data ?? {};
+      await logSms({
+        contactId: opts.contactId,
+        direction: "outbound",
+        fromNumber: from,
+        toNumber: toNumber,
+        body: content,
+        phoneNumberId: (data.phoneNumberId as string) ?? null,
+        openphoneMessageId: (data.id as string) ?? null,
+        salesId: opts.salesId ?? null,
+      });
+    }
     return { ok: res.ok, status: res.status, body };
   } catch (e) {
     console.error("Quo sales send threw:", e);

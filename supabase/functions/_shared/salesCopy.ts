@@ -1,15 +1,21 @@
 // SMS copy for the automated Robin Line sales funnel.
 //
-// Discipline (from robinline-1/docs/messaging-overhaul-spec.md):
-//   * GSM-7 only — NO em-dash, curly quotes, emoji (they force UCS-2 / 70-char
-//     segments and tank deliverability). Use plain hyphen, straight quotes.
-//   * Keep each message <=160 chars INCLUDING the opt-out line.
-//   * Every first/standalone message carries opt-out language.
+// VOICE: these read like a real person named "robin" texting one-to-one - lower
+// case, casual, contractions, one question, never salesy. The lead should feel
+// like a human reached out, not an automation.
+//
+// Discipline:
+//   * GSM-7 only. NO em-dash ever, no curly quotes, no emoji (they force UCS-2 /
+//     70-char segments and tank deliverability). Plain hyphen + straight quotes.
+//   * Keep each message <=160 chars.
+//   * NO advertised opt-out line ("Txt STOP ...") in SMS. Compliance is enforced
+//     in code: quo_inbound's STOP_RE suppresses anyone who texts stop/unsub/etc.
+//     (Email keeps a soft CAN-SPAM opt-out below - that's legally required.)
 //
 // Merge fields: {{first_name}} (filled by the dispatcher at send time),
-// {{rep_name}} (pre-rendered at enqueue time from SALES_AGENT_NAME).
+// {{lead_magnet}} (what they grabbed). The sender name "robin" is written inline.
 //
-// Copy here is research-backed scaffolding; final wording is Dominic's call.
+// Copy here is scaffolding; final wording is Dominic's call.
 
 export const GSM7_BASIC =
   "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞ ÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà";
@@ -37,10 +43,10 @@ export function render(template: string, vars: Record<string, string>): string {
   );
 }
 
-// First touch — fired the instant a lead opts in (speed-to-lead). Opens a
+// First touch - fired the instant a lead opts in (speed-to-lead). Opens a
 // qualifying conversation; the AI agent takes over on the reply.
 export const OPENER =
-  "Hey {{first_name}}, it's {{rep_name}} at Robin Line. Just sent {{lead_magnet}}! Quick q to point you right: residential, commercial, or both? Txt STOP to opt out.";
+  "hey {{first_name}}, robin here from robin line. just sent over {{lead_magnet}}. you running a cleaning crew right now or just getting started?";
 
 // Multi-touch nurture for leads who never reply. Cancelled on any inbound.
 // Offsets are minutes from opt-in. Ends on a breakup (highest reply rate).
@@ -55,31 +61,31 @@ export const NURTURE: NurtureStep[] = [
     key: "nudge_1h",
     offsetMinutes: 60,
     template:
-      "{{first_name}}, still want to see how Robin Line books cleanings 24/7? 15 min. This week or next? Txt STOP to stop.",
+      "{{first_name}}, still want to see how robin line books cleanings for you around the clock? takes about 15 min. this week work?",
   },
   {
     key: "nudge_1d",
     offsetMinutes: 60 * 24,
     template:
-      "Hey {{first_name}}, Robin Line answers every lead in seconds so you stop losing jobs to slow replies. Quick demo? Txt STOP to stop.",
+      "hey {{first_name}}, most owners i talk to are losing jobs to slow replies. robin line answers every lead in seconds. worth a quick look?",
   },
   {
     key: "nudge_3d",
     offsetMinutes: 60 * 24 * 3,
     template:
-      "{{first_name}}, owners on Robin Line book more jobs without hiring a VA. Worth 15 min on your numbers? Txt STOP to stop.",
+      "{{first_name}}, owners on robin line book more jobs without hiring a VA. want me to show you on your own numbers? only takes 15",
   },
   {
     key: "nudge_7d",
     offsetMinutes: 60 * 24 * 7,
     template:
-      "Still there {{first_name}}? Can send a 2-min video instead of a call if easier. Want it? Txt STOP to stop.",
+      "still around {{first_name}}? i can send a quick 2 min video instead of hopping on a call if that's easier. want me to?",
   },
   {
     key: "breakup_14d",
     offsetMinutes: 60 * 24 * 14,
     template:
-      "{{first_name}}, closing your file so I stop texting. Want Robin Line to run your booking? Just reply here. All the best. STOP to stop.",
+      "{{first_name}}, i'll stop bugging you. if you ever want robin line running your booking just text me back. take care",
   },
 ];
 
@@ -96,25 +102,25 @@ export const REMINDERS: ReminderStep[] = [
     key: "reminder_24h",
     minutesBefore: 60 * 24,
     template:
-      "{{first_name}}, your Robin Line demo is tomorrow at {{demo_time}}. Reply C to confirm or R to reschedule. Txt STOP to stop.",
+      "hey {{first_name}}, we're on for tomorrow at {{demo_time}} for your robin line walkthrough. still good? reply c to confirm or r to move it",
   },
   {
     key: "reminder_morning",
     minutesBefore: 60 * 3, // resolved to ~8am local by the scheduler
     template:
-      "Morning {{first_name}}! Your Robin Line demo is today at {{demo_time}}. See you then - reply R to reschedule. Txt STOP to stop.",
+      "morning {{first_name}}! we're set for today at {{demo_time}}. talk soon. reply r if you need to move it",
   },
   {
     key: "reminder_1h",
     minutesBefore: 60,
     template:
-      "{{first_name}}, your Robin Line demo is in 1 hour ({{demo_time}}). Here's the link: {{join_link}}. Txt STOP to stop.",
+      "{{first_name}}, see you in an hour at {{demo_time}}. here's the link: {{join_link}}",
   },
 ];
 
 // Sent right after a missed demo to recover the no-show.
 export const NO_SHOW =
-  "{{first_name}}, sorry we missed you for the Robin Line demo! Want to grab another time? {{calendly_link}} Txt STOP to stop.";
+  "hey {{first_name}}, looks like we missed each other earlier. want to grab another time? {{calendly_link}}";
 
 // ---------------------------------------------------------------------------
 // WARM EMAIL drip for lead-magnet opt-ins who gave an email. Sent from the

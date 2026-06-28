@@ -20,6 +20,7 @@ import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
 import { getGoogleAccessToken } from "../_shared/googleToken.ts";
 import { assignToCloser } from "../_shared/handoff.ts";
+import { recordBooking, cancelBooking } from "../_shared/bookings.ts";
 
 const ACTIVE_STAGES = ["lead", "contacted", "demo-booked", "demo-done", "proposal-sent", "in-negociation"];
 const ADVANCEABLE = ["lead", "contacted"]; // only these get pulled to demo-booked
@@ -98,6 +99,7 @@ async function processEvent(ev: GCalEvent): Promise<EventOutcome> {
     const deal = await openDeal(contactId);
     if (deal && deal.stage === "demo-booked") {
       await supabaseAdmin.from("deals").update({ stage: "contacted", updated_at: new Date().toISOString() }).eq("id", deal.id);
+      if (contactId) await cancelBooking({ contactId });
       await supabaseAdmin.from("contact_notes").insert({
         contact_id: contactId,
         text: "📅 Calendar demo canceled — moved back to contacted.",
@@ -175,6 +177,8 @@ async function processEvent(ev: GCalEvent): Promise<EventOutcome> {
   }
 
   await assignToCloser({ dealId, contactId, reason: "demo_booked", summary: `Demo booked (calendar) for ${fmtDemoTime(start)}` });
+  // Mirror the booked demo into the bookings table (best-effort, idempotent).
+  if (contactId) await recordBooking({ contactId, scheduledFor: start, notes: "Demo booked via Google Calendar" });
   await supabaseAdmin.from("contact_notes").insert({
     contact_id: contactId,
     text: `📅 Demo booked via Google Calendar for ${fmtDemoTime(start)} — logged to pipeline.`,

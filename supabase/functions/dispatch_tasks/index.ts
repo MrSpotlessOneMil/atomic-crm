@@ -126,8 +126,10 @@ async function handleNoShowCheck(task: TaskRow): Promise<Outcome> {
     .maybeSingle();
   const phone = firstPhone(contact ?? null);
   if (!phone) {
-    await setStatus(task.id, { status: "failed", last_error: "no phone" });
-    return "failed";
+    // No number -> can never text. Cancel (not fail): stops the error noise and
+    // never retries. Prevention is upstream (calendly_webhook hasPhone guard).
+    await setStatus(task.id, { status: "canceled", last_error: "no phone (canceled)" });
+    return "skipped";
   }
   const { data: sup } = await supabaseAdmin
     .from("sms_suppressions")
@@ -143,7 +145,7 @@ async function handleNoShowCheck(task: TaskRow): Promise<Outcome> {
     first_name: (contact?.first_name ?? "").split(" ")[0] || "there",
     calendly_link: await getCalendlyUrl(),
   });
-  const res = await sendSalesSms(phone, content);
+  const res = await sendSalesSms(phone, content, { contactId: task.contact_id });
   if (!res.ok) {
     await setStatus(task.id, { status: "failed", last_error: JSON.stringify(res.body).slice(0, 500) });
     return "failed";
@@ -252,8 +254,10 @@ async function processTask(task: TaskRow): Promise<Outcome> {
 
   const phone = firstPhone(contact, payload.to);
   if (!phone) {
-    await setStatus(task.id, { status: "failed", last_error: "no phone for task" });
-    return "failed";
+    // No number -> can never text. Cancel (not fail) so it stops showing as an
+    // error and never retries. Prevention is upstream (calendly_webhook).
+    await setStatus(task.id, { status: "canceled", last_error: "no phone (canceled)" });
+    return "skipped";
   }
 
   // Opt-out suppression (STOP / manual).
@@ -285,7 +289,7 @@ async function processTask(task: TaskRow): Promise<Outcome> {
     return "failed";
   }
 
-  const res = await sendSalesSms(phone, content);
+  const res = await sendSalesSms(phone, content, { contactId: task.contact_id });
   if (res.ok) {
     await setStatus(task.id, { status: "sent" });
     if (task.contact_id) {
@@ -338,16 +342,17 @@ const handle = async (req: Request) => {
   const provided = req.headers.get("X-DISPATCH-TOKEN");
   if (!expected || provided !== expected) return createErrorResponse(401, "Unauthorized");
 
-  // Global pause: drain the due queue to 'canceled' (no sends, no retries) so
-  // the every-minute cron stops churning. CRM logging happens elsewhere.
+  // Global pause: HOLD the queue. Leave due tasks 'pending' so they flush the
+  // moment sends are re-enabled - never cancel them (cancelling here permanently
+  // dropped every lead that opted in during a pause window). Sending nothing is
+  // the only side effect; the every-minute cron just no-ops while paused.
   if (await salesSendsPaused()) {
-    const { data: canceled } = await supabaseAdmin
+    const { count } = await supabaseAdmin
       .from("scheduled_tasks")
-      .update({ status: "canceled", last_error: "sends paused", updated_at: new Date().toISOString() })
+      .select("*", { count: "exact", head: true })
       .eq("status", "pending")
-      .lte("run_at", new Date().toISOString())
-      .select("id");
-    return new Response(JSON.stringify({ ok: true, paused: true, canceled: canceled?.length ?? 0 }), {
+      .lte("run_at", new Date().toISOString());
+    return new Response(JSON.stringify({ ok: true, paused: true, held: count ?? 0 }), {
       headers: { "Content-Type": "application/json", ...corsHeaders },
     });
   }
