@@ -14,6 +14,7 @@ import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
 import { toE164 } from "../_shared/quoSales.ts";
 import { OPENER, NURTURE, EMAIL_OPENER, EMAIL_NURTURE, render } from "../_shared/salesCopy.ts";
+import { openerForSource, isColdSource } from "../_shared/leadPlaybooks.ts";
 
 type Body = {
   first_name?: string;
@@ -89,6 +90,9 @@ const handle = async (req: Request) => {
   const business = trim(body.business_name || body.ig_username, 120);
   const sourceRaw = trim(body.platform || body.source, 40) || "inbound";
   const source = leadSource(sourceRaw);
+  // Cold sources (cold-call / cold-email) are worked by the outbound AUDIT play,
+  // not the warm opt-in drip, so we log them but skip the auto-cadence below.
+  const cold = isColdSource(source);
   const magnet = trim(body.lead_magnet, 60);
 
   // Need at least one channel to work the lead: phone (SMS funnel) or email
@@ -191,18 +195,19 @@ const handle = async (req: Request) => {
   // when sends resume. This guarantees no lead is ever logged without a cadence.
 
   let enqueued = 0;
-  if (!flooded && (!pending || pending.length === 0)) {
+  if (!flooded && !cold && (!pending || pending.length === 0)) {
     // {{first_name}} stays for send time; {{lead_magnet}} names what they grabbed.
     const vars = { rep_name: repName(), lead_magnet: magnet || "your free templates" };
     const now = Date.now();
     const rows: Record<string, unknown>[] = [];
-    // SMS cadence — only when we have a phone.
+    // SMS cadence — only when we have a phone. Opener voice is picked by source
+    // (see leadPlaybooks.ts) so social/website/referral each open differently.
     if (e164) {
       rows.push({
         task_type: "speed_to_lead_sms",
         contact_id: contactId,
         deal_id: dealId,
-        payload: { content: render(OPENER, vars), key: "opener" },
+        payload: { content: render(openerForSource(source) ?? OPENER, vars), key: "opener" },
         run_at: new Date(now).toISOString(),
       });
       for (const s of NURTURE) {

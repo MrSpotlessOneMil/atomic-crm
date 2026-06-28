@@ -1,10 +1,11 @@
 import { useMutation } from "@tanstack/react-query";
 import { isValid } from "date-fns";
-import { Archive, ArchiveRestore } from "lucide-react";
+import { Archive, ArchiveRestore, Copy, Phone } from "lucide-react";
 import {
   InfiniteListBase,
   ShowBase,
   useDataProvider,
+  useGetOne,
   useNotify,
   useRecordContext,
   useRedirect,
@@ -28,6 +29,12 @@ import { NotesIterator } from "../notes/NotesIterator";
 import { useConfigurationContext } from "../root/ConfigurationContext";
 import type { Deal } from "../types";
 import { ContactList } from "./ContactList";
+import {
+  auditCallScript,
+  auditFactsFromDeal,
+  auditGapLabel,
+  classifyAudit,
+} from "./audit";
 import { findDealLabel, formatISODateString } from "./dealUtils";
 
 export const DealShow = ({ open, id }: { open: boolean; id?: string }) => {
@@ -169,6 +176,11 @@ const DealShowContent = () => {
 
           <div className="m-4">
             <Separator className="mb-4" />
+            <CallPrepPanel />
+          </div>
+
+          <div className="m-4">
+            <Separator className="mb-4" />
             <InfiniteListBase
               resource="deal_notes"
               filter={{ deal_id: record.id }}
@@ -216,6 +228,87 @@ const DealShowContent = () => {
         </div>
       </div>
     </>
+  );
+};
+
+// Cold-call audit panel: turns this prospect's logged response time into a
+// ready-to-read script for the SDR. Honest proof only — if there's no angle
+// (responsive prospect or no audit logged), it nudges the SDR to log one.
+const CallPrepPanel = () => {
+  const record = useRecordContext<Deal>();
+  const notify = useNotify();
+  const { data: company } = useGetOne(
+    "companies",
+    { id: record?.company_id },
+    { enabled: !!record?.company_id },
+  );
+  if (!record) return null;
+
+  const facts = auditFactsFromDeal(record, company?.name);
+  const severity = classifyAudit(facts);
+  const script = auditCallScript(facts);
+  const gapLabel = auditGapLabel(facts);
+
+  const copyAll = () => {
+    if (!script) return;
+    navigator.clipboard
+      .writeText(`${script.hook}\n\n${script.pivot}\n\n${script.ask}`)
+      .then(() => notify("Call script copied", { type: "info" }))
+      .catch(() => notify("Couldn't copy", { type: "error" }));
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <Phone className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-medium">Cold-call prep</span>
+          <Badge variant={severity === "responsive" ? "secondary" : "outline"}>
+            {gapLabel}
+          </Badge>
+        </div>
+        {script ? (
+          <Button
+            onClick={copyAll}
+            size="sm"
+            variant="outline"
+            className="flex items-center gap-2 h-8"
+          >
+            <Copy className="w-3.5 h-3.5" />
+            Copy script
+          </Button>
+        ) : null}
+      </div>
+
+      {script ? (
+        <div className="space-y-3 text-sm leading-6 bg-muted/40 rounded-md p-3">
+          <p>
+            <span className="text-xs uppercase tracking-wide text-muted-foreground block">
+              Open
+            </span>
+            {script.hook}
+          </p>
+          <p>
+            <span className="text-xs uppercase tracking-wide text-muted-foreground block">
+              Pivot
+            </span>
+            {script.pivot}
+          </p>
+          <p>
+            <span className="text-xs uppercase tracking-wide text-muted-foreground block">
+              Ask
+            </span>
+            {script.ask}
+          </p>
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          {severity === "responsive"
+            ? "This prospect replied fast — no slow-response angle. Lead with a normal opener."
+            : "No audit logged yet. Send them a genuine inquiry, log the timings on this deal, and the script appears here."}
+        </p>
+      )}
+    </div>
   );
 };
 

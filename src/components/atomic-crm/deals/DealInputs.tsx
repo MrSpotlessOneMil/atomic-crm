@@ -5,6 +5,8 @@ import { ReferenceInput } from "@/components/admin/reference-input";
 import { TextInput } from "@/components/admin/text-input";
 import { NumberInput } from "@/components/admin/number-input";
 import { DateInput } from "@/components/admin/date-input";
+import { DateTimeInput } from "@/components/admin/date-time-input";
+import { BooleanInput } from "@/components/admin/boolean-input";
 import { SelectInput } from "@/components/admin/select-input";
 import { Separator } from "@/components/ui/separator";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -24,6 +26,61 @@ export const DealInputs = () => {
         <Separator orientation={isMobile ? "horizontal" : "vertical"} />
         <DealMiscInputs />
       </div>
+
+      <Separator orientation="horizontal" />
+      <DealAuditInputs />
+    </div>
+  );
+};
+
+// Speed-to-lead audit: log a genuine shopper inquiry to this prospect and how
+// slow they were. Feeds the cold-call script in the deal view. See ./audit.ts.
+const DealAuditInputs = () => {
+  return (
+    <div className="flex flex-col gap-4 flex-1">
+      <h3 className="text-base font-medium">Speed-to-lead audit</h3>
+      <p className="text-xs text-muted-foreground -mt-2">
+        Sent the prospect a real "what's your price for X?" inquiry? Log it here —
+        the deal view turns their response time into your call script.
+      </p>
+      <DateTimeInput
+        source="audit_inquiry_sent_at"
+        label="Inquiry sent at"
+        helperText="When you sent the genuine shopper inquiry"
+      />
+      <SelectInput
+        source="audit_channel"
+        label="Inquiry channel"
+        choices={[
+          { id: "phone", name: "Phone call" },
+          { id: "web_form", name: "Website form" },
+          { id: "email", name: "Email" },
+          { id: "sms", name: "Text" },
+        ]}
+        helperText={false}
+      />
+      <TextInput
+        source="audit_job_type"
+        label="What you asked about"
+        helperText="A real service they offer — e.g. move-out, post-construction, recurring office"
+      />
+      <DateTimeInput
+        source="audit_first_reply_at"
+        label="First reply at"
+        helperText="Leave blank if they never replied"
+      />
+      <BooleanInput
+        source="audit_followed_up"
+        label="Did they follow up to chase the job?"
+        helperText={false}
+      />
+      <TextInput
+        source="audit_notes"
+        label="Audit notes"
+        multiline
+        rows={2}
+        helperText={false}
+      />
     </div>
   );
 };

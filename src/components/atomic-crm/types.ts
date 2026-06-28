@@ -145,6 +145,14 @@ export type Deal = {
   next_action_date?: string | null;
   owner_type?: string | null;
   follow_up_count?: number;
+  // Speed-to-lead audit: a genuine shopper inquiry to this prospect + how slow
+  // they were, used as honest proof in the outreach back to them.
+  audit_inquiry_sent_at?: string | null;
+  audit_channel?: string | null; // 'sms' | 'email' | 'web_form' | 'phone'
+  audit_job_type?: string | null;
+  audit_first_reply_at?: string | null;
+  audit_followed_up?: boolean | null;
+  audit_notes?: string | null;
 } & Pick<RaRecord, "id">;
 
 export type DealNote = {
