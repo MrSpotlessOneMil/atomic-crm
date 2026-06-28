@@ -40,6 +40,8 @@ export const generateCompanies = (db: Db, size = 55): Required<Company>[] => {
       state_abbr: address.stateAbbr(),
       nb_contacts: 0,
       nb_deals: 0,
+      nb_calls: 0,
+      last_contacted_at: null,
       // at least 1/3rd of companies for Jane Doe
       sales_id: datatype.number(2) === 0 ? 0 : random.arrayElement(db.sales).id,
       created_at: randomDate().toISOString(),
