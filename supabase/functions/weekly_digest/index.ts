@@ -90,7 +90,7 @@ const buildDigestEmail = ({
       ? `${upcomingBookings} ${upcomingBookings === 1 ? "booking" : "bookings"} on the calendar this week.`
       : `No bookings on the calendar yet — share your /u/${sale.id} link.`;
 
-  const subject = `OSIRIS weekly digest`;
+  const subject = `Robin Line weekly digest`;
   const text = [
     `Hey ${firstName},`,
     "",

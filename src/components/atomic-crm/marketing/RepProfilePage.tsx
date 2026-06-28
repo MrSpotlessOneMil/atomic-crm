@@ -63,10 +63,10 @@ export const RepProfilePage = () => {
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-4 text-center">
         <h1 className="text-2xl font-semibold">Rep not found</h1>
         <p className="text-muted-foreground">
-          This page may have moved. Visit the main OSIRIS site to get started.
+          This page may have moved. Visit the main Robin Line site to get started.
         </p>
         <Button asChild>
-          <Link to="/about-osiris">Visit OSIRIS</Link>
+          <Link to="/about">Visit Robin Line</Link>
         </Button>
       </div>
     );
@@ -78,8 +78,8 @@ export const RepProfilePage = () => {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="flex items-center justify-between px-6 py-4 border-b">
-        <Link to="/about-osiris" className="text-lg font-semibold">
-          OSIRIS
+        <Link to="/about" className="text-lg font-semibold">
+          Robin Line
         </Link>
         <Button asChild variant="ghost">
           <Link to="/login">Sign in</Link>
@@ -94,7 +94,7 @@ export const RepProfilePage = () => {
           </Avatar>
           <div>
             <p className="text-sm uppercase tracking-widest text-muted-foreground">
-              OSIRIS sales rep
+              Robin Line sales rep
             </p>
             <h1 className="text-4xl font-bold tracking-tight mt-1">
               {fullName}
@@ -176,7 +176,7 @@ export const RepProfilePage = () => {
                 Want to sell with {data.first_name}?
               </h2>
               <p className="text-muted-foreground">
-                Join the OSIRIS sales team. It's free to start.
+                Join the Robin Line sales team. It's free to start.
               </p>
               <Button asChild size="lg">
                 <Link to="/sign-up">
@@ -190,7 +190,7 @@ export const RepProfilePage = () => {
       </section>
 
       <footer className="border-t px-6 py-8 text-center text-sm text-muted-foreground">
-        OSIRIS — powered by Spotless Scrubbers.
+        Robin Line — powered by Spotless Scrubbers.
       </footer>
     </div>
   );

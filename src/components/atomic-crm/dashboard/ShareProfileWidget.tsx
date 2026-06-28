@@ -11,7 +11,8 @@ export const ShareProfileWidget = () => {
 
   if (!identity?.id) return null;
 
-  const url = `${window.location.origin}/u/${identity.id}`;
+  // App is hash-routed, so public links must include the hash.
+  const url = `${window.location.origin}/#/u/${identity.id}`;
 
   const copy = async () => {
     try {

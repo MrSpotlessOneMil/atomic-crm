@@ -13,6 +13,7 @@ import {
   ListTodo,
   MessageSquare,
   MoreHorizontal,
+  PhoneCall,
   Plus,
   Settings,
   Trophy,
@@ -190,6 +191,7 @@ const MoreButton = () => {
   const isActive =
     !!matchPath("/settings", location.pathname) ||
     !!matchPath("/payouts/*", location.pathname) ||
+    !!matchPath("/calls/*", location.pathname) ||
     !!matchPath("/leaderboard/*", location.pathname) ||
     !!matchPath("/community/*", location.pathname) ||
     !!matchPath("/bookings/*", location.pathname);
@@ -203,6 +205,11 @@ const MoreButton = () => {
       href: "/payouts",
       label: translate("crm.nav.payouts", { _: "Payouts" }),
       Icon: DollarSign,
+    },
+    {
+      href: "/calls",
+      label: translate("crm.nav.calls", { _: "Calls" }),
+      Icon: PhoneCall,
     },
     {
       href: "/leaderboard",

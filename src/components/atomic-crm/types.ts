@@ -24,6 +24,10 @@ export type SalesFormData = {
   last_name: string;
   administrator: boolean;
   disabled: boolean;
+  platform?: string | null;
+  territory?: string | null;
+  sdr_role?: "sdr" | "ae";
+  quo_phone?: string | null;
 };
 
 export type Sale = {
@@ -46,6 +50,12 @@ export type Sale = {
    * @deprecated
    */
   password?: string;
+
+  // Robin Line: rep's owned social platform, cold-call territory, and role.
+  platform?: string | null;
+  territory?: string | null;
+  sdr_role?: "sdr" | "ae";
+  quo_phone?: string | null;
 } & Pick<RaRecord, "id">;
 
 export type Company = {
@@ -69,6 +79,9 @@ export type Company = {
   context_links?: string[];
   nb_contacts?: number;
   nb_deals?: number;
+  /** Aggregates from companies_summary: how many calls logged, and last touch. */
+  nb_calls?: number;
+  last_contacted_at?: string | null;
 } & Pick<RaRecord, "id">;
 
 export type EmailAndType = {
@@ -126,6 +139,12 @@ export type Deal = {
   sales_id: Identifier;
   index: number;
   commission_rate_override?: number | null;
+  // Robin Line SDR fields
+  pain_point?: string | null;
+  next_action?: string | null;
+  next_action_date?: string | null;
+  owner_type?: string | null;
+  follow_up_count?: number;
 } & Pick<RaRecord, "id">;
 
 export type DealNote = {

@@ -1,4 +1,7 @@
 import { useGetIdentity, useListContext, useTranslate } from "ra-core";
+import { Upload } from "lucide-react";
+import { Link } from "react-router";
+import { Button } from "@/components/ui/button";
 import { CreateButton } from "@/components/admin/create-button";
 import { ExportButton } from "@/components/admin/export-button";
 import { List } from "@/components/admin/list";
@@ -48,6 +51,12 @@ const CompanyListActions = () => {
   return (
     <TopToolbar>
       <SortButton fields={["name", "created_at", "nb_contacts"]} />
+      <Button asChild variant="outline" size="sm">
+        <Link to="/import-leads">
+          <Upload className="w-4 h-4 mr-2" />
+          Import leads
+        </Link>
+      </Button>
       <ExportButton />
       <CreateButton
         label={translate("resources.companies.action.new", {

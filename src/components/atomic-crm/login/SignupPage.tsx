@@ -46,7 +46,7 @@ export const SignupPage = () => {
         .then(() => {
           notify("crm.auth.signup.initial_user_created", {
             messageArgs: {
-              _: "Welcome to OSIRIS! Let's get you set up.",
+              _: "Welcome to Robin Line! Let's get you set up.",
             },
           });
           // FIXME: We should probably provide a hook for that in the ra-core package
@@ -109,7 +109,7 @@ export const SignupPage = () => {
           <h1 className="text-2xl font-bold mb-4">
             {isInitialized
               ? translate("crm.auth.welcome_title_join", {
-                  _: "Join the OSIRIS sales team",
+                  _: "Join the Robin Line sales team",
                 })
               : translate("crm.auth.welcome_title", {
                   _: "Welcome to Atomic CRM",
@@ -197,9 +197,9 @@ export const SignupPage = () => {
             </div>
           </form>
           <div className="flex flex-col gap-2 items-center mt-4 text-sm">
-            <Link to="/about-osiris" className="hover:underline">
+            <Link to="/about" className="hover:underline">
               {translate("crm.auth.what_is_osiris", {
-                _: "What is OSIRIS?",
+                _: "What is Robin Line?",
               })}
             </Link>
             {isInitialized ? (

@@ -9,7 +9,8 @@ import { EarningsWidget } from "./EarningsWidget";
 import { HotContacts } from "./HotContacts";
 import { PersonalActivityFeed } from "./PersonalActivityFeed";
 import { ShareProfileWidget } from "./ShareProfileWidget";
-import { StripeOnboardingWidget } from "./StripeOnboardingWidget";
+import { DailyTasks } from "./DailyTasks";
+import { FollowUpsWidget } from "./FollowUpsWidget";
 import { TasksList } from "./TasksList";
 import { UnassignedLeadsWidget } from "./UnassignedLeadsWidget";
 import { Welcome } from "./Welcome";
@@ -41,16 +42,26 @@ export const Dashboard = () => {
     return null;
   }
 
-  if (!totalContact) {
-    return <DashboardStepper step={1} />;
-  }
-
-  if (!totalContactNotes) {
-    return <DashboardStepper step={2} contactId={dataContact?.[0]?.id} />;
-  }
+  const body = !totalContact ? (
+    <DashboardStepper step={1} />
+  ) : !totalContactNotes ? (
+    <DashboardStepper step={2} contactId={dataContact?.[0]?.id} />
+  ) : (
+    <DashboardGrid totalDeal={totalDeal} />
+  );
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-12 gap-6 mt-1">
+    <div className="flex flex-col gap-6 mt-1">
+      <DailyTasks />
+      <FollowUpsWidget />
+      {body}
+    </div>
+  );
+};
+
+const DashboardGrid = ({ totalDeal }: { totalDeal?: number }) => {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
       <div className="md:col-span-3">
         <div className="flex flex-col gap-4">
           {import.meta.env.VITE_IS_DEMO === "true" ? <Welcome /> : null}
@@ -68,7 +79,6 @@ export const Dashboard = () => {
       <div className="md:col-span-3">
         <div className="flex flex-col gap-4">
           <UnassignedLeadsWidget />
-          <StripeOnboardingWidget />
           <ShareProfileWidget />
           <EarningsWidget />
           <OsirisAssistantWidget />

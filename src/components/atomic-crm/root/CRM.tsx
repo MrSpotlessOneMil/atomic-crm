@@ -27,6 +27,11 @@ import { ConfirmationRequired } from "../login/ConfirmationRequired";
 import { BookingsPage } from "../bookings/BookingsPage";
 import { CommunityPage } from "../community/CommunityPage";
 import { LeaderboardPage } from "../leaderboard/LeaderboardPage";
+import { AllCallsPage } from "../calls/AllCallsPage";
+import { ResourcesPage } from "../resources/ResourcesPage";
+import { ImportLeadsPage } from "../companies/ImportLeadsPage";
+import { AiAddContactPage } from "../contacts/AiAddContactPage";
+import { InboxPage } from "../inbox/InboxPage";
 import { AboutOsirisPage } from "../marketing/AboutOsirisPage";
 import { RepProfilePage } from "../marketing/RepProfilePage";
 import { OnboardingPage } from "../onboarding/OnboardingPage";
@@ -283,8 +288,13 @@ const DesktopAdmin = (
         <Route path={SettingsPage.path} element={<SettingsPage />} />
         <Route path={ImportPage.path} element={<ImportPage />} />
         <Route path={LeaderboardPage.path} element={<LeaderboardPage />} />
+        <Route path={AllCallsPage.path} element={<AllCallsPage />} />
         <Route path={PayoutsPage.path} element={<PayoutsPage />} />
         <Route path={CommunityPage.path} element={<CommunityPage />} />
+        <Route path={ResourcesPage.path} element={<ResourcesPage />} />
+        <Route path={ImportLeadsPage.path} element={<ImportLeadsPage />} />
+        <Route path={AiAddContactPage.path} element={<AiAddContactPage />} />
+        <Route path={InboxPage.path} element={<InboxPage />} />
         <Route path={BookingsPage.path} element={<BookingsPage />} />
       </CustomRoutes>
       <Resource name="deals" {...deals} />
@@ -366,8 +376,13 @@ const MobileAdmin = (
             element={<SettingsPageMobile />}
           />
           <Route path={LeaderboardPage.path} element={<LeaderboardPage />} />
+        <Route path={AllCallsPage.path} element={<AllCallsPage />} />
           <Route path={PayoutsPage.path} element={<PayoutsPage />} />
           <Route path={CommunityPage.path} element={<CommunityPage />} />
+          <Route path={ResourcesPage.path} element={<ResourcesPage />} />
+        <Route path={ImportLeadsPage.path} element={<ImportLeadsPage />} />
+        <Route path={AiAddContactPage.path} element={<AiAddContactPage />} />
+        <Route path={InboxPage.path} element={<InboxPage />} />
           <Route path={BookingsPage.path} element={<BookingsPage />} />
         </CustomRoutes>
         <Resource

@@ -52,6 +52,26 @@ async function createSale(
   return sales.at(0);
 }
 
+// Robin Line: update the rep's owned platform / territory, and (admin only)
+// their SDR↔AE role. Only writes keys that were actually provided.
+async function updateSaleSdrFields(
+  user_id: string,
+  fields: {
+    platform?: string;
+    territory?: string;
+    sdr_role?: string;
+    quo_phone?: string;
+  },
+) {
+  const patch: Record<string, unknown> = {};
+  if (fields.platform !== undefined) patch.platform = fields.platform;
+  if (fields.territory !== undefined) patch.territory = fields.territory;
+  if (fields.sdr_role !== undefined) patch.sdr_role = fields.sdr_role;
+  if (fields.quo_phone !== undefined) patch.quo_phone = fields.quo_phone;
+  if (Object.keys(patch).length === 0) return;
+  await supabaseAdmin.from("sales").update(patch).eq("user_id", user_id);
+}
+
 async function updateSaleAvatar(user_id: string, avatar: string) {
   const { data: sales, error: salesError } = await supabaseAdmin
     .from("sales")
@@ -187,6 +207,10 @@ async function patchUser(req: Request, currentUserSale: any) {
     avatar,
     administrator,
     disabled,
+    platform,
+    territory,
+    sdr_role,
+    quo_phone,
   } = await req.json();
   const { data: sale } = await supabaseAdmin
     .from("sales")
@@ -228,6 +252,15 @@ async function patchUser(req: Request, currentUserSale: any) {
   if (avatar) {
     await updateSaleAvatar(data.user.id, avatar);
   }
+
+  // Platform / territory can be set by the rep themselves or an admin.
+  // sdr_role (the SDR→AE upgrade) is admin-only.
+  await updateSaleSdrFields(data.user.id, {
+    platform,
+    territory,
+    quo_phone,
+    sdr_role, // SDR vs AE is a view/label, not a permission — reps set it at onboarding
+  });
 
   // Only administrators can update the administrator and disabled status.
   if (!isAdminCaller) {

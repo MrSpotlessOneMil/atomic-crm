@@ -5,6 +5,7 @@ import { ReferenceManyField } from "@/components/admin/reference-many-field";
 import { ShowButton } from "@/components/admin/show-button";
 
 import { OsirisAssistantWidget } from "../assistant/OsirisAssistantWidget";
+import { SendTextButton } from "./SendTextButton";
 import { AddTask } from "../tasks/AddTask";
 import { TasksIterator } from "../tasks/TasksIterator";
 import { TagsListEdit } from "./TagsListEdit";
@@ -30,6 +31,15 @@ export const ContactAside = ({ link = "edit" }: { link?: "edit" | "show" }) => {
         ) : (
           <ShowButton label="resources.contacts.action.show" />
         )}
+      </div>
+
+      <div className="mb-4">
+        <SendTextButton
+          to={record.phone_jsonb?.[0]?.number}
+          name={`${record.first_name} ${record.last_name}`}
+          contactId={record.id}
+          className="w-full"
+        />
       </div>
 
       <AsideSection title={translate("resources.notes.fields.status")}>
@@ -68,7 +78,7 @@ export const ContactAside = ({ link = "edit" }: { link?: "edit" | "show" }) => {
         <AddTask />
       </AsideSection>
 
-      <AsideSection title="OSIRIS assistant">
+      <AsideSection title="Robin Line Assistant">
         <ContactAssistant record={record} />
       </AsideSection>
 

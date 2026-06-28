@@ -74,6 +74,7 @@ const DealMiscInputs = () => {
 
       <SelectInput
         source="category"
+        label="Lead Source"
         choices={dealCategories}
         optionText="label"
         optionValue="value"
@@ -81,6 +82,7 @@ const DealMiscInputs = () => {
       />
       <NumberInput
         source="amount"
+        label="Deal Value (ARR $)"
         defaultValue={0}
         helperText={false}
         validate={required()}
@@ -96,9 +98,44 @@ const DealMiscInputs = () => {
         choices={dealStages}
         optionText="label"
         optionValue="value"
-        defaultValue="opportunity"
+        defaultValue="lead"
         helperText={false}
         validate={required()}
+      />
+      <SelectInput
+        source="owner_type"
+        label="Owner Type"
+        choices={[
+          { id: "solo", name: "Owner-operator (solo)" },
+          { id: "crew", name: "Has a crew / team" },
+          { id: "multi", name: "Multi-location / scaling" },
+          { id: "manager", name: "Manager (not the owner)" },
+        ]}
+        helperText={false}
+      />
+      <TextInput
+        source="pain_point"
+        label="Pain Point"
+        multiline
+        rows={2}
+        helperText="What's hurting them — missed leads, slow quotes, no follow-up…"
+      />
+      <TextInput
+        source="next_action"
+        label="Next Action"
+        helperText={false}
+      />
+      <DateInput
+        source="next_action_date"
+        label="Next Action Date"
+        helperText={false}
+      />
+      <NumberInput
+        source="follow_up_count"
+        label="Follow-up #"
+        defaultValue={0}
+        min={0}
+        helperText="How many times you've followed up"
       />
       <NumberInput
         source="commission_rate_override"

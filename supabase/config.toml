@@ -37,7 +37,7 @@ default_pool_size = 20
 max_client_conn = 100
 
 [realtime]
-enabled = true
+enabled = false
 # Bind realtime via either IPv4 or IPv6. (default: IPv6)
 # ip_version = "IPv6"
 # The maximum length in bytes of HTTP request headers. (default: 4096)
@@ -191,4 +191,38 @@ verify_jwt = false
 [functions.stripe_payout_trigger]
 verify_jwt = false
 [functions.stripe_webhook]
+verify_jwt = false
+[functions.quo_send_sms]
+verify_jwt = false
+[functions.gmail_oauth_callback]
+verify_jwt = false
+[functions.gmail_send]
+verify_jwt = false
+[functions.ai_extract_contact]
+verify_jwt = false
+[functions.quo_messages]
+verify_jwt = false
+[functions.quo_create_contact]
+verify_jwt = false
+[functions.quo_calls]
+verify_jwt = false
+[functions.quo_conversations]
+verify_jwt = false
+[functions.dispatch_tasks]
+verify_jwt = false
+[functions.lead_inbound]
+verify_jwt = false
+[functions.quo_inbound]
+verify_jwt = false
+[functions.sales_agent]
+verify_jwt = false
+[functions.calendly_webhook]
+verify_jwt = false
+[functions.funnel_status]
+verify_jwt = false
+[functions.web_lead]
+verify_jwt = false
+[functions.gcal_poll]
+verify_jwt = false
+[functions.instantly_inbound]
 verify_jwt = false

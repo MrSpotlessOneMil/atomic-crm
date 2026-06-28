@@ -1,4 +1,4 @@
-import { Building, Truck, Users } from "lucide-react";
+import { Building, MapPin, Sparkles, Truck, Users } from "lucide-react";
 import { FilterLiveForm, useGetIdentity, useTranslate } from "ra-core";
 import { ToggleFilterButton } from "@/components/admin/toggle-filter-button";
 import { SearchInput } from "@/components/admin/search-input";
@@ -7,6 +7,21 @@ import { FilterCategory } from "../filters/FilterCategory";
 import { useConfigurationContext } from "../root/ConfigurationContext";
 import { getTranslatedCompanySizeLabel } from "./getTranslatedCompanySizeLabel";
 import { sizes } from "./sizes";
+
+// Territories the lead bank is organized by.
+const regions = [
+  "Bay Area",
+  "Los Angeles",
+  "New York",
+  "Chicago",
+  "Dallas",
+  "Miami",
+  "Charlotte",
+  "Denver",
+  "Phoenix",
+  "Oklahoma City",
+  "San Antonio",
+];
 
 export const CompanyListFilter = () => {
   const { identity } = useGetIdentity();
@@ -21,6 +36,30 @@ export const CompanyListFilter = () => {
       <FilterLiveForm>
         <SearchInput source="q" />
       </FilterLiveForm>
+
+      <FilterCategory icon={<MapPin className="h-4 w-4" />} label="Region">
+        {regions.map((region) => (
+          <ToggleFilterButton
+            className="w-full justify-between"
+            label={region}
+            key={region}
+            value={{ "territory@eq": region }}
+          />
+        ))}
+      </FilterCategory>
+
+      <FilterCategory icon={<Sparkles className="h-4 w-4" />} label="Focus">
+        <ToggleFilterButton
+          className="w-full justify-between"
+          label="Cleaning (active)"
+          value={{ "vertical@eq": "cleaning" }}
+        />
+        <ToggleFilterButton
+          className="w-full justify-between"
+          label="Expansion bank"
+          value={{ "vertical@eq": "expansion" }}
+        />
+      </FilterCategory>
 
       <FilterCategory
         icon={<Building className="h-4 w-4" />}

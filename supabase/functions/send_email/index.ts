@@ -67,7 +67,7 @@ const buildMessage = (
       return {
         subject: `New comment on "${title}"`,
         text: `Hey ${firstName} — someone replied to "${title}". Read it: ${link}`,
-        html: `<p>Hey ${escape(firstName)} —</p><p>Someone replied to <strong>"${escape(title)}"</strong>.</p><p><a href="${link}">Read on OSIRIS community</a></p>`,
+        html: `<p>Hey ${escape(firstName)} —</p><p>Someone replied to <strong>"${escape(title)}"</strong>.</p><p><a href="${link}">Read on Robin Line community</a></p>`,
       };
     }
     case "payout_approved": {
@@ -98,9 +98,9 @@ const buildMessage = (
     }
     default:
       return {
-        subject: "You have a new OSIRIS notification",
-        text: `Hey ${firstName} — sign in to OSIRIS to see what's new.`,
-        html: `<p>Hey ${escape(firstName)} —</p><p>Sign in to OSIRIS to see what's new.</p>`,
+        subject: "You have a new Robin Line notification",
+        text: `Hey ${firstName} — sign in to Robin Line to see what's new.`,
+        html: `<p>Hey ${escape(firstName)} —</p><p>Sign in to Robin Line to see what's new.</p>`,
       };
   }
 };

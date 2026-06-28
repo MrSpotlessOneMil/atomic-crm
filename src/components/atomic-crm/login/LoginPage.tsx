@@ -159,11 +159,11 @@ export const LoginPage = (props: { redirectTo?: string }) => {
               </Link>
             )}
             <Link
-              to={"/about-osiris"}
+              to={"/about"}
               className="block text-sm text-center hover:underline text-muted-foreground"
             >
               {translate("crm.auth.what_is_osiris", {
-                _: "What is OSIRIS?",
+                _: "What is Robin Line?",
               })}
             </Link>
           </div>

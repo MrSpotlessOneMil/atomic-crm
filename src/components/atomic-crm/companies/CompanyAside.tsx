@@ -19,6 +19,8 @@ import type { Company } from "../types";
 import { getTranslatedCompanySizeLabel } from "./getTranslatedCompanySizeLabel";
 import { sizes } from "./sizes";
 import { useGetSalesName } from "../sales/useGetSalesName";
+import { SendTextButton } from "../contacts/SendTextButton";
+import { toE164 } from "../misc/phone";
 
 interface CompanyAsideProps {
   link?: string;
@@ -38,6 +40,15 @@ export const CompanyAside = ({ link = "edit" }: CompanyAsideProps) => {
           <ShowButton label={translate("resources.companies.action.show")} />
         )}
       </div>
+
+      {record.phone_number ? (
+        <SendTextButton
+          to={record.phone_number}
+          name={record.name}
+          companyId={record.id}
+          className="w-full"
+        />
+      ) : null}
 
       <CompanyInfo record={record} />
 
@@ -99,7 +110,12 @@ export const CompanyInfo = ({ record }: { record: Company }) => {
       {record.phone_number && (
         <div className="flex flex-row items-center gap-1 min-h-[24px]">
           <Phone className="w-4 h-4" />
-          <TextField source="phone_number" />
+          <a
+            href={`tel:${toE164(record.phone_number)}`}
+            className="text-primary hover:underline"
+          >
+            {record.phone_number}
+          </a>
         </div>
       )}
     </AsideSection>

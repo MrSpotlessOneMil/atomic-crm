@@ -322,7 +322,7 @@ export const createDataProvider = ({
       // Demo mode: canned response. The real implementation lives in the
       // supabase data provider and proxies to the osiris_assistant edge function.
       await new Promise((r) => setTimeout(r, 600));
-      return "(demo mode) OSIRIS isn't wired up in FakeRest. Connect Supabase and set ANTHROPIC_API_KEY to chat for real.";
+      return "(demo mode) Robin Line isn't wired up in FakeRest. Connect Supabase and set ANTHROPIC_API_KEY to chat for real.";
     },
     markOnboardingCompleted: async (): Promise<void> => {
       // No-op in fakerest mode.
@@ -332,12 +332,62 @@ export const createDataProvider = ({
       onDelta: (textDelta: string) => void,
     ): Promise<string> => {
       const reply =
-        "(demo mode) OSIRIS isn't wired up in FakeRest. Connect Supabase and set ANTHROPIC_API_KEY to chat for real.";
+        "(demo mode) Robin Line isn't wired up in FakeRest. Connect Supabase and set ANTHROPIC_API_KEY to chat for real.";
       for (const word of reply.split(/(\s+)/)) {
         await new Promise((r) => setTimeout(r, 30));
         onDelta(word);
       }
       return reply;
+    },
+    sendQuoSms: async (_params: {
+      to: string;
+      content: string;
+      contact_id?: Identifier;
+    }) => {
+      return {
+        data: "(demo mode) Texting isn't wired up in FakeRest. Connect Supabase + Quo to send for real.",
+      };
+    },
+    sendGmail: async (_params: {
+      to: string;
+      subject: string;
+      body: string;
+      contact_id?: Identifier;
+    }) => {
+      return {
+        data: "(demo mode) Email isn't wired up in FakeRest. Connect Supabase + Gmail to send for real.",
+      };
+    },
+    aiExtractContact: async (_text: string) => {
+      return {} as Record<string, string>;
+    },
+    quoMessages: async (_to: string) => {
+      return [] as Array<{
+        id: string;
+        text: string;
+        direction: "incoming" | "outgoing";
+        createdAt: string;
+        status?: string;
+      }>;
+    },
+    quoCalls: async (_to: string) => {
+      return [] as Array<{
+        id: string;
+        direction: "incoming" | "outgoing";
+        status?: string;
+        createdAt: string;
+        duration: number | null;
+        recordingUrl: string | null;
+        transcript: string;
+      }>;
+    },
+    quoConversations: async () => {
+      return [] as Array<{
+        id: string;
+        phone: string;
+        name: string | null;
+        lastActivityAt: string | null;
+      }>;
     },
   };
 

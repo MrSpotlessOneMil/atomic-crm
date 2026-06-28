@@ -1,15 +1,12 @@
 import {
   ArrowRight,
   Bot,
-  Building2,
   CalendarCheck,
-  GraduationCap,
-  Handshake,
-  Home,
-  Trophy,
-  UserPlus,
-  Users,
-  Wallet,
+  CreditCard,
+  PhoneCall,
+  RefreshCw,
+  Route as RouteIcon,
+  Sparkles,
 } from "lucide-react";
 import { Link } from "react-router";
 
@@ -17,63 +14,55 @@ import { Button } from "@/components/ui/button";
 
 import { LeadCaptureForm } from "./LeadCaptureForm";
 
-const services = [
+// What Robin Line does for a cleaning company — the product, in plain English.
+const howItWorks = [
   {
-    icon: Home,
-    title: "Residential cleaning",
-    body: "Recurring home cleaning packages homeowners trust. High close rates and dependable repeat revenue.",
+    icon: PhoneCall,
+    title: "Robin answers every lead",
+    body: "Our AI voice + text agent replies to every inbound — SMS, phone, web, Meta ads — instantly, 24/7. No lead ever goes unanswered.",
   },
   {
-    icon: Building2,
-    title: "Commercial cleaning",
-    body: "Offices, retail, and small commercial accounts. Bigger tickets, longer relationships.",
+    icon: Sparkles,
+    title: "Instant quoting",
+    body: "Qualifies the job and gets a consistent price out fast, while the lead is still hot.",
   },
   {
-    icon: CalendarCheck,
-    title: "Recurring contracts",
-    body: "Weekly, bi-weekly, monthly. We help you turn every one-off into a long-term contract.",
-  },
-];
-
-const howSteps = [
-  {
-    icon: UserPlus,
-    title: "Sign up",
-    body: "Create your free OSIRIS account in under a minute. No sales experience required.",
+    icon: RouteIcon,
+    title: "Dispatch & scheduling",
+    body: "Routes every job to the right crew automatically — no more manual scheduling chaos.",
   },
   {
-    icon: GraduationCap,
-    title: "Get trained",
-    body: "Short, focused lessons on how to source leads, quote jobs, and handle objections.",
+    icon: CreditCard,
+    title: "Payments",
+    body: "Collects through Stripe so owners stop chasing money.",
   },
   {
-    icon: Handshake,
-    title: "Close deals & get paid",
-    body: "Use the CRM to track contacts and pipeline. Get paid on every signed job and recurring contract.",
-  },
-];
-
-const reasons = [
-  {
-    icon: Trophy,
-    title: "Gamified leaderboard",
-    body: "See how you rank, climb the chart, unlock streaks. Healthy competition keeps you closing.",
+    icon: RefreshCw,
+    title: "Win-back & reviews",
+    body: "Re-engages past customers and pulls reviews on autopilot — repeat revenue owners were leaving on the table.",
   },
   {
     icon: Bot,
-    title: "AI sales assistant",
-    body: "Draft follow-ups, score leads, and get on-the-fly coaching from an AI built for home services.",
+    title: "Built on our own CRM",
+    body: "Runs on Clean Machine, and plugs into whatever the owner already uses — Housecall Pro, Jobber, ZenMaid, GoHighLevel and more.",
   },
-  {
-    icon: Wallet,
-    title: "Transparent payouts",
-    body: "Clear commission structure with no surprises. See your earnings in real time.",
-  },
-  {
-    icon: Users,
-    title: "Peer community",
-    body: "Swap tactics with other reps. Learn from people closing the same kinds of deals you are.",
-  },
+];
+
+// The six places cleaning owners bleed money — the pain you sell against.
+const problems = [
+  "A lead comes in and nobody answers fast enough — it goes cold or books a competitor.",
+  "Quotes take too long and aren't consistent.",
+  "Dispatch and scheduling is manual chaos.",
+  "Quality control is weak — reviews slip.",
+  "Payment collection is slow and leaky.",
+  "Past customers never get re-engaged — repeat revenue left on the table.",
+];
+
+const liveClients = [
+  "West Niagara Cleaning",
+  "WinBros",
+  "Cedar Rapids House Cleaners",
+  "Texas Nova Cleaning",
 ];
 
 const SignUpButton = ({
@@ -85,7 +74,7 @@ const SignUpButton = ({
 }) => (
   <Button asChild size={size} variant={variant}>
     <Link to="/sign-up">
-      Sign up
+      Start selling
       <ArrowRight className="w-4 h-4 ml-2" />
     </Link>
   </Button>
@@ -95,8 +84,8 @@ export const AboutOsirisPage = () => {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="flex items-center justify-between px-6 py-4 border-b">
-        <Link to="/about-osiris" className="text-lg font-semibold">
-          OSIRIS
+        <Link to="/about" className="text-lg font-semibold">
+          Robin Line
         </Link>
         <div className="flex items-center gap-2">
           <Button asChild variant="ghost">
@@ -106,18 +95,19 @@ export const AboutOsirisPage = () => {
         </div>
       </header>
 
+      {/* Hero */}
       <section className="px-6 py-20 lg:py-28 border-b">
         <div className="max-w-3xl mx-auto text-center space-y-6">
           <p className="text-sm uppercase tracking-widest text-muted-foreground">
-            OSIRIS
+            Robin Line
           </p>
           <h1 className="text-4xl lg:text-6xl font-bold tracking-tight">
-            AI-powered sales for home services.
+            The AI operating system for cleaning companies.
           </h1>
           <p className="text-lg text-muted-foreground">
-            Join a sales platform built for cleaning. Bring in leads, close
-            contracts, and get paid — with an AI assistant in your corner the
-            whole way.
+            Robin Line answers every lead, quotes, dispatches, collects payment,
+            and wins back old customers — automatically. We sell it to house and
+            commercial cleaning companies. You book the demos.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center pt-4">
             <SignUpButton size="lg" />
@@ -125,121 +115,115 @@ export const AboutOsirisPage = () => {
               <Link to="/login">I already have an account</Link>
             </Button>
           </div>
-        </div>
-      </section>
-
-      <section className="px-6 py-16 border-b">
-        <div className="max-w-5xl mx-auto space-y-10">
-          <div className="text-center space-y-2">
-            <h2 className="text-3xl font-semibold">What we sell</h2>
-            <p className="text-muted-foreground">
-              You'll sell three core service lines — all in demand, all
-              recurring.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {services.map((service) => {
-              const Icon = service.icon;
-              return (
-                <div
-                  key={service.title}
-                  className="rounded-lg border bg-card p-6 flex flex-col gap-3"
-                >
-                  <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center">
-                    <Icon className="w-5 h-5 text-primary" />
-                  </div>
-                  <h3 className="text-lg font-semibold">{service.title}</h3>
-                  <p className="text-sm text-muted-foreground">{service.body}</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      <section className="px-6 py-16 border-b bg-muted/30">
-        <div className="max-w-5xl mx-auto space-y-10">
-          <div className="text-center space-y-2">
-            <h2 className="text-3xl font-semibold">How you'll sell with us</h2>
-            <p className="text-muted-foreground">
-              From zero to your first paycheck in three steps.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {howSteps.map((step, idx) => {
-              const Icon = step.icon;
-              return (
-                <div
-                  key={step.title}
-                  className="rounded-lg border bg-card p-6 flex flex-col gap-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl font-bold text-muted-foreground">
-                      0{idx + 1}
-                    </span>
-                    <Icon className="w-5 h-5 text-primary" />
-                  </div>
-                  <h3 className="text-lg font-semibold">{step.title}</h3>
-                  <p className="text-sm text-muted-foreground">{step.body}</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      <section className="px-6 py-16 border-b">
-        <div className="max-w-5xl mx-auto space-y-10">
-          <div className="text-center space-y-2">
-            <h2 className="text-3xl font-semibold">Why join</h2>
-            <p className="text-muted-foreground">
-              Coming features we're building so reps win more, faster.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {reasons.map((reason) => {
-              const Icon = reason.icon;
-              return (
-                <div
-                  key={reason.title}
-                  className="rounded-lg border bg-card p-6 flex flex-col gap-3"
-                >
-                  <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center">
-                    <Icon className="w-5 h-5 text-primary" />
-                  </div>
-                  <h3 className="text-lg font-semibold">{reason.title}</h3>
-                  <p className="text-sm text-muted-foreground">{reason.body}</p>
-                </div>
-              );
-            })}
-          </div>
-          <p className="text-center text-xs text-muted-foreground italic">
-            These features are on the roadmap and being rolled out as OSIRIS
-            grows.
+          <p className="text-sm text-muted-foreground italic pt-2">
+            "Built by a guy who actually runs a cleaning company — already live
+            with companies just like yours."
           </p>
         </div>
       </section>
 
-      <section className="px-6 py-16 border-b bg-muted/30">
-        <div className="max-w-2xl mx-auto space-y-6">
+      {/* The problem */}
+      <section className="px-6 py-16 border-b">
+        <div className="max-w-4xl mx-auto space-y-8">
           <div className="text-center space-y-2">
-            <h2 className="text-3xl font-semibold">Need a clean?</h2>
+            <h2 className="text-3xl font-semibold">The problem we solve</h2>
             <p className="text-muted-foreground">
-              Tell us about the job and we'll get back to you with a quote.
-              One of our reps will reach out within a business day.
+              Cleaning owners bleed money in the same six spots. Robin Line
+              plugs every one.
             </p>
           </div>
-          <LeadCaptureForm />
+          <ul className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {problems.map((p, i) => (
+              <li
+                key={i}
+                className="flex gap-3 rounded-lg border bg-card p-4 text-sm"
+              >
+                <span className="font-bold text-primary">{i + 1}</span>
+                <span className="text-muted-foreground">{p}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       </section>
 
-      <section className="px-6 py-20">
+      {/* How it works */}
+      <section className="px-6 py-16 border-b bg-muted/30">
+        <div className="max-w-5xl mx-auto space-y-10">
+          <div className="text-center space-y-2">
+            <h2 className="text-3xl font-semibold">How Robin Line works</h2>
+            <p className="text-muted-foreground">
+              The entire front and back office of a cleaning company — running
+              itself.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {howItWorks.map((item) => {
+              const Icon = item.icon;
+              return (
+                <div
+                  key={item.title}
+                  className="rounded-lg border bg-card p-6 flex flex-col gap-3"
+                >
+                  <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center">
+                    <Icon className="w-5 h-5 text-primary" />
+                  </div>
+                  <h3 className="text-lg font-semibold">{item.title}</h3>
+                  <p className="text-sm text-muted-foreground">{item.body}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* Proof + pricing */}
+      <section className="px-6 py-16 border-b">
+        <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-10">
+          <div className="space-y-4">
+            <h2 className="text-2xl font-semibold">Real proof, real traction</h2>
+            <p className="text-muted-foreground text-sm">
+              Robin Line is built by operators, for operators. CEO Dominic owns
+              Spotless Scrubbers, a six-figure LA cleaning company — every
+              feature got battle-tested on a real operation first.
+            </p>
+            <div className="flex flex-wrap gap-2 pt-1">
+              {liveClients.map((c) => (
+                <span
+                  key={c}
+                  className="text-xs rounded-full border px-3 py-1 text-muted-foreground"
+                >
+                  {c}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-4">
+            <h2 className="text-2xl font-semibold">
+              Less than a VA. More than set hours.
+            </h2>
+            <p className="text-muted-foreground text-sm">
+              A full-time VA costs $1,500–$3,000/mo and still misses leads. Robin
+              Line starts at <strong>$599/mo</strong>, runs the back office 24/7,
+              and never drops a lead. Your job isn't to negotiate price — it's to
+              book the qualified demo and let the team take it from there.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Rep recruitment CTA */}
+      <section className="px-6 py-20 border-b bg-muted/30">
         <div className="max-w-2xl mx-auto text-center space-y-6">
+          <div className="flex justify-center">
+            <CalendarCheck className="w-8 h-8 text-primary" />
+          </div>
           <h2 className="text-3xl lg:text-4xl font-semibold">
-            Or — join us as a rep
+            Sell Robin Line. Book demos. Get paid.
           </h2>
           <p className="text-muted-foreground">
-            Sign up for free. Get trained. Start earning.
+            Sign up free, get your mission and your playbook, and start booking
+            qualified demo calls with cleaning-company owners. Everything you
+            need to sell is in one place.
           </p>
           <div className="flex justify-center">
             <SignUpButton size="lg" />
@@ -247,11 +231,25 @@ export const AboutOsirisPage = () => {
         </div>
       </section>
 
+      {/* Cleaning-company demo request */}
+      <section className="px-6 py-16">
+        <div className="max-w-2xl mx-auto space-y-6">
+          <div className="text-center space-y-2">
+            <h2 className="text-3xl font-semibold">Run a cleaning company?</h2>
+            <p className="text-muted-foreground">
+              See Robin in action. Tell us a bit about your operation and we'll
+              set up a quick demo — usually within a business day.
+            </p>
+          </div>
+          <LeadCaptureForm />
+        </div>
+      </section>
+
       <footer className="border-t px-6 py-8 text-center text-sm text-muted-foreground">
-        OSIRIS — powered by Spotless Scrubbers.
+        Robin Line — built by operators, for operators.
       </footer>
     </div>
   );
 };
 
-AboutOsirisPage.path = "/about-osiris";
+AboutOsirisPage.path = "/about";

@@ -3,12 +3,13 @@ import { SortButton } from "@/components/admin/sort-button";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { UserPlus } from "lucide-react";
+import { ChevronLeft, ChevronRight, UserPlus } from "lucide-react";
 import {
   RecordContextProvider,
   ShowBase,
   useListContext,
   useLocaleState,
+  usePrevNextController,
   useRecordContext,
   useShowContext,
   useTranslate,
@@ -24,6 +25,9 @@ import {
 import { useIsMobile } from "@/hooks/use-mobile";
 import { ActivityLog } from "../activity/ActivityLog";
 import { Avatar } from "../contacts/Avatar";
+import { LogCallButton } from "./LogCallButton";
+import { SendEmailButton } from "../contacts/SendEmailButton";
+import { SendTextButton } from "../contacts/SendTextButton";
 import { TagsList } from "../contacts/TagsList";
 import { findDealLabel } from "../deals/dealUtils";
 import { MobileContent } from "../layout/MobileContent";
@@ -52,6 +56,46 @@ export const CompanyShow = () => {
   );
 };
 
+// Rapid cold-call navigation: jump straight to the next (or previous) company
+// in the current filtered/sorted list — e.g. while working the "Bay Area"
+// filter — without bouncing back to the list in between. Respects the list's
+// active filters and sort order.
+const CompanyPrevNextButtons = () => {
+  const navigate = useNavigate();
+  const { hasPrev, hasNext, prevPath, nextPath, index, total } =
+    usePrevNextController<Company>({ linkType: "show" });
+
+  return (
+    <div className="flex items-center gap-1">
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={!hasPrev}
+        onClick={() => prevPath && navigate(prevPath)}
+        aria-label="Previous company"
+        title="Previous company"
+      >
+        <ChevronLeft className="w-4 h-4" />
+      </Button>
+      {typeof index === "number" && typeof total === "number" ? (
+        <span className="px-1 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+          {index + 1} / {total}
+        </span>
+      ) : null}
+      <Button
+        size="sm"
+        disabled={!hasNext}
+        onClick={() => nextPath && navigate(nextPath)}
+        aria-label="Next company"
+        title="Next company"
+      >
+        Next
+        <ChevronRight className="w-4 h-4 ml-1" />
+      </Button>
+    </div>
+  );
+};
+
 const CompanyShowContentMobile = () => {
   const translate = useTranslate();
   const { record, isPending } = useShowContext<Company>();
@@ -76,6 +120,23 @@ const CompanyShowContentMobile = () => {
             <CompanyAvatar />
             <div className="mx-3 flex-1">
               <h2 className="text-2xl font-bold">{record.name}</h2>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <LogCallButton />
+              {record.phone_number ? (
+                <SendTextButton
+                  to={record.phone_number}
+                  name={record.name}
+                  companyId={record.id}
+                />
+              ) : null}
+              <SendEmailButton
+                name={record.name}
+                website={record.website}
+                companyId={record.id}
+                phone={record.phone_number}
+              />
+              <CompanyPrevNextButtons />
             </div>
           </div>
         </div>
@@ -113,9 +174,26 @@ const CompanyShowContent = () => {
       <div className="flex-1">
         <Card>
           <CardContent>
-            <div className="flex mb-3">
+            <div className="flex mb-3 items-center">
               <CompanyAvatar />
               <h5 className="text-xl ml-2 flex-1">{record.name}</h5>
+              <div className="flex gap-2 flex-wrap">
+                <LogCallButton />
+                {record.phone_number ? (
+                  <SendTextButton
+                  to={record.phone_number}
+                  name={record.name}
+                  companyId={record.id}
+                />
+                ) : null}
+                <SendEmailButton
+                name={record.name}
+                website={record.website}
+                companyId={record.id}
+                phone={record.phone_number}
+              />
+                <CompanyPrevNextButtons />
+              </div>
             </div>
             <Tabs defaultValue={currentTab} onValueChange={handleTabChange}>
               <TabsList className="grid w-full grid-cols-3">

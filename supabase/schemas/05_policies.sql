@@ -28,6 +28,11 @@ alter table public.community_comments enable row level security;
 alter table public.notifications enable row level security;
 alter table public.rep_availability enable row level security;
 alter table public.bookings enable row level security;
+-- Internal automation tables: RLS on, no policies → reachable only via the
+-- service role (edge functions / pg_cron). Admin read views come in Phase 5.
+alter table public.scheduled_tasks enable row level security;
+alter table public.sms_suppressions enable row level security;
+alter table public.agent_messages enable row level security;
 
 -- Companies
 create policy "Companies select for owner or admin" on public.companies
@@ -123,12 +128,10 @@ create policy "Contact notes delete for owner or admin" on public.contact_notes
   );
 
 -- Deals
-create policy "Deals select for owner or admin" on public.deals
-  for select to authenticated
-  using (
-    public.is_admin()
-    or sales_id = (select id from public.sales where user_id = auth.uid())
-  );
+-- Reads are team-wide (shared pipeline + leaderboard); writes stay owner-or-admin
+-- below so reps can only modify deals assigned to them.
+create policy "Deals select all authenticated" on public.deals
+  for select to authenticated using (true);
 create policy "Deals insert for owner or admin" on public.deals
   for insert to authenticated
   with check (
@@ -154,12 +157,9 @@ create policy "Deals delete for owner or admin" on public.deals
   );
 
 -- Deal Notes
-create policy "Deal notes select for owner or admin" on public.deal_notes
-  for select to authenticated
-  using (
-    public.is_admin()
-    or sales_id = (select id from public.sales where user_id = auth.uid())
-  );
+-- Reads are team-wide so the shared pipeline history shows; writes owner-or-admin.
+create policy "Deal notes select all authenticated" on public.deal_notes
+  for select to authenticated using (true);
 create policy "Deal notes insert for owner or admin" on public.deal_notes
   for insert to authenticated
   with check (

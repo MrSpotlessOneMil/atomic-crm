@@ -2,6 +2,18 @@
 <html lang="en" translate="no" class="notranslate">
   <head>
     <meta charset="utf-8" />
+    <script>
+      // The app is hash-routed. If someone opens a clean deep link (e.g. a
+      // shared /u/4 rep-profile link), bounce it to the hash route so it loads.
+      (function () {
+        var p = window.location.pathname;
+        if (p && p !== "/" && !window.location.hash) {
+          window.location.replace(
+            "/#" + p.replace(/\/+$/, "") + window.location.search,
+          );
+        }
+      })();
+    </script>
     <meta
       name="viewport"
       content="minimum-scale=1, initial-scale=1, width=device-width"
@@ -28,7 +40,7 @@
     <link rel="apple-touch-icon" sizes="180x180" href="./appIcon/180.png" />
     <link rel="apple-touch-icon" sizes="192x192" href="./appIcon/192.png" />
     <link rel="apple-touch-icon" sizes="1024x1024" href="./appIcon/1024.png" />
-    <title>Atomic CRM</title>
+    <title>Robin Line</title>
 
     <style>
       body {

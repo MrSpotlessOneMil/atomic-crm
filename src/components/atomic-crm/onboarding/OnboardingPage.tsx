@@ -23,6 +23,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 
 import { TextInput } from "@/components/admin/text-input";
+import { SelectInput } from "@/components/admin/select-input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -91,7 +92,7 @@ export const OnboardingPage = () => {
     <div className="min-h-screen bg-background">
       <header className="flex items-center justify-between p-6 border-b">
         <Link to="/" className="text-lg font-semibold">
-          OSIRIS
+          Robin Line
         </Link>
         <Link
           to="/"
@@ -157,18 +158,27 @@ const WelcomeStep = ({ onNext }: { onNext: () => void }) => {
         <Sparkles className="w-7 h-7 text-primary" />
         <h2 className="text-2xl font-semibold">
           {translate("crm.onboarding.welcome.title", {
-            _: "You're in. Here's what OSIRIS is.",
+            _: "Welcome to the team. Here's your mission.",
           })}
         </h2>
       </div>
       <p className="text-base text-muted-foreground">
         {translate("crm.onboarding.welcome.body", {
-          _: "OSIRIS is an AI-powered sales platform for home services. You'll get tools, leads, and coaching to help you close cleaning contracts and earn payouts on every win. Let's set up your account.",
+          _: "You sell Robin Line — the AI operating system for cleaning companies. Your one job: book qualified demo calls with cleaning-company owners. The team closes them; you get paid on every demo that shows.",
         })}
       </p>
+      <div className="rounded-lg border bg-muted/40 p-4 space-y-2">
+        <p className="text-sm font-semibold">Your north star</p>
+        <p className="text-3xl font-bold text-primary">8 qualified shows / week</p>
+        <p className="text-sm text-muted-foreground">
+          A qualified demo is a cleaning-company owner who has (or is paying for)
+          lead flow, can afford $599+/mo, and has real admin pain. Book those,
+          confirm them so they show, and the leaderboard takes care of itself.
+        </p>
+      </div>
       <div className="flex justify-end">
         <Button onClick={onNext}>
-          {translate("crm.onboarding.next", { _: "Next" })}
+          {translate("crm.onboarding.next", { _: "Let's go" })}
           <ArrowRight className="w-4 h-4 ml-2" />
         </Button>
       </div>
@@ -202,6 +212,10 @@ const ProfileStep = ({
         administrator: sale.administrator,
         disabled: sale.disabled ?? false,
         avatar: values.avatar,
+        platform: values.platform ?? sale.platform,
+        territory: values.territory ?? sale.territory,
+        quo_phone: values.quo_phone ?? sale.quo_phone,
+        sdr_role: values.sdr_role ?? sale.sdr_role ?? "sdr",
       });
     },
     onSuccess: () => {
@@ -271,6 +285,44 @@ const ProfileStep = ({
             />
           </div>
 
+          <SelectInput
+            source="sdr_role"
+            label="Your role"
+            defaultValue="sdr"
+            helperText="Account Executives don't need a territory or platform"
+            choices={[
+              { id: "sdr", name: "SDR" },
+              { id: "ae", name: "Account Executive / Closer" },
+            ]}
+          />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <SelectInput
+              source="platform"
+              label="Your social platform"
+              helperText="The account you're responsible for"
+              choices={[
+                { id: "instagram", name: "Instagram" },
+                { id: "tiktok", name: "TikTok" },
+                { id: "facebook", name: "Facebook" },
+                { id: "linkedin", name: "LinkedIn" },
+                { id: "multiple", name: "Multiple / Cold call only" },
+                { id: "none", name: "None" },
+              ]}
+            />
+            <TextInput
+              source="territory"
+              label="Your territory / location"
+              helperText="e.g. Los Angeles, Dallas, Tampa (SDRs)"
+            />
+          </div>
+
+          <TextInput
+            source="quo_phone"
+            label="Your Quo phone number"
+            helperText="The number we gave you, e.g. +13105551234 — to text leads from here"
+          />
+
           <div className="flex justify-between pt-2">
             <Button type="button" variant="ghost" onClick={onBack}>
               <ArrowLeft className="w-4 h-4 mr-2" />
@@ -302,24 +354,39 @@ const HowYouSellStep = ({
   const translate = useTranslate();
   const tiles = [
     {
-      icon: Users,
-      title: translate("crm.onboarding.how.lead.title", { _: "1. Find a lead" }),
-      body: translate("crm.onboarding.how.lead.body", {
-        _: "Reach out to homeowners and businesses, or work the inbound leads OSIRIS sends your way.",
+      icon: Target,
+      title: translate("crm.onboarding.how.waterfall.title", {
+        _: "1. Work warmest → coldest",
+      }),
+      body: translate("crm.onboarding.how.waterfall.body", {
+        _: "Run the waterfall: fresh ad leads & DMs first, then follow-ups due today, then provided lists, then cold calls off Google Maps. Always be on the hottest lead available.",
       }),
     },
     {
-      icon: Target,
-      title: translate("crm.onboarding.how.deal.title", { _: "2. Open a deal" }),
-      body: translate("crm.onboarding.how.deal.body", {
-        _: "Capture the contact in the CRM and move them through the pipeline: discovery, quote, signed.",
+      icon: Users,
+      title: translate("crm.onboarding.how.qualify.title", {
+        _: "2. Qualify in seconds",
+      }),
+      body: translate("crm.onboarding.how.qualify.body", {
+        _: "Owner? Cleaning company? Has or wants lead flow? Can afford $599+? Real admin pain? If yes, it's a real prospect — log it and push for the demo.",
+      }),
+    },
+    {
+      icon: CheckCircle2,
+      title: translate("crm.onboarding.how.book.title", {
+        _: "3. Book the demo",
+      }),
+      body: translate("crm.onboarding.how.book.body", {
+        _: "Your win is a booked, qualified demo. Fire the calendar invite on the spot, log the qualifier answers, and put a closer on it.",
       }),
     },
     {
       icon: DollarSign,
-      title: translate("crm.onboarding.how.win.title", { _: "3. Win & get paid" }),
-      body: translate("crm.onboarding.how.win.body", {
-        _: "Mark the deal won and a payout is queued. Recurring contracts pay every month.",
+      title: translate("crm.onboarding.how.show.title", {
+        _: "4. Make it show",
+      }),
+      body: translate("crm.onboarding.how.show.body", {
+        _: "You're paid on shows, not bookings. Confirm at booking, remind 24h out, text the morning of. A no-show = $0.",
       }),
     },
   ];
@@ -332,12 +399,12 @@ const HowYouSellStep = ({
         </h2>
         <p className="text-sm text-muted-foreground">
           {translate("crm.onboarding.how.subtitle", {
-            _: "Three steps from first conversation to payout.",
+            _: "Warmest to coldest. Book the demo. Make it show.",
           })}
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {tiles.map((tile) => {
           const Icon = tile.icon;
           return (
@@ -400,7 +467,7 @@ const ReadyStep = ({
           <Users className="w-4 h-4" />
           <span className="font-medium">
             {translate("crm.onboarding.ready.add_contact", {
-              _: "Add your first contact",
+              _: "Add your first lead",
             })}
           </span>
         </Button>

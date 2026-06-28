@@ -93,10 +93,15 @@ select
     c.tax_identifier,
     c.logo,
     count(distinct d.id) as nb_deals,
-    count(distinct co.id) as nb_contacts
+    count(distinct co.id) as nb_contacts,
+    c.territory,
+    c.vertical,
+    max(cn.date) as last_contacted_at,
+    count(distinct cn.id) filter (where cn.text like '📞%') as nb_calls
 from public.companies c
     left join public.deals d on c.id = d.company_id
     left join public.contacts co on c.id = co.company_id
+    left join public.contact_notes cn on cn.contact_id = co.id
 group by c.id;
 
 create or replace view public.contacts_summary with (security_invoker = on) as

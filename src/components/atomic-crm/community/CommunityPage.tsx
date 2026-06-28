@@ -110,7 +110,7 @@ export const CommunityPage = () => {
       <header className="flex items-center gap-3">
         <Users className="w-6 h-6 text-primary" />
         <div>
-          <h1 className="text-2xl font-semibold">OSIRIS community</h1>
+          <h1 className="text-2xl font-semibold">Robin Line community</h1>
           <p className="text-sm text-muted-foreground">
             Trade tactics with other reps. Ask questions, share wins, drop
             scripts that worked.

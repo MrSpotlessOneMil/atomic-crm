@@ -1,4 +1,4 @@
-import { Flame, Medal, Trophy } from "lucide-react";
+import { Flame, Medal, PhoneCall, Trophy } from "lucide-react";
 import { useGetList } from "ra-core";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-import type { Deal, Sale } from "../types";
+import type { ContactNote, Deal, Sale } from "../types";
 
 type Range = "week" | "month" | "all";
 
@@ -17,9 +17,15 @@ type LeaderRow = {
   sale: Sale;
   wonCount: number;
   wonAmount: number;
+  callCount: number;
   streak: number;
   badges: string[];
 };
+
+// A logged call is a contact note whose text starts with the phone marker
+// written by the Log Call button ("📞 … called").
+const isCallNote = (text?: string | null): boolean =>
+  typeof text === "string" && text.trimStart().startsWith("📞");
 
 const formatMoney = (value: number) =>
   new Intl.NumberFormat(undefined, {
@@ -95,6 +101,15 @@ export const LeaderboardPage = () => {
     sort: { field: "updated_at", order: "DESC" },
   });
 
+  // Every rep's logged calls, used to surface "calls made" on the board.
+  const { data: notes, isPending: notesLoading } = useGetList<ContactNote>(
+    "contact_notes",
+    {
+      pagination: { page: 1, perPage: 5000 },
+      sort: { field: "date", order: "DESC" },
+    },
+  );
+
   const rows: LeaderRow[] = useMemo(() => {
     if (!sales || !deals) return [];
     const cutoff = startOfRange(range);
@@ -103,6 +118,11 @@ export const LeaderboardPage = () => {
       const closed = new Date(d.updated_at);
       return closed >= cutoff;
     };
+    const callInRange = (n: ContactNote): boolean => {
+      if (!cutoff) return true;
+      return new Date(n.date) >= cutoff;
+    };
+    const callNotes = (notes ?? []).filter((n) => isCallNote(n.text));
     return (sales ?? [])
       .filter((s) => !s.disabled)
       .map((sale) => {
@@ -114,6 +134,9 @@ export const LeaderboardPage = () => {
           (sum, d) => sum + (d.amount ?? 0),
           0,
         );
+        const callCount = callNotes.filter(
+          (n) => n.sales_id === sale.id && callInRange(n),
+        ).length;
         const streak = computeStreak(
           wonAll.map((d) => new Date(d.updated_at)),
         );
@@ -121,15 +144,18 @@ export const LeaderboardPage = () => {
           sale,
           wonCount: wonInRange.length,
           wonAmount,
+          callCount,
           streak,
         };
         return { ...base, badges: computeBadges(base) };
       })
       .sort((a, b) => b.wonAmount - a.wonAmount || b.wonCount - a.wonCount);
-  }, [sales, deals, range]);
+  }, [sales, deals, notes, range]);
 
-  const isPending = salesLoading || dealsLoading;
-  const hasAnyWins = rows.some((r) => r.wonCount > 0);
+  const isPending = salesLoading || dealsLoading || notesLoading;
+  // Show the full roster as soon as reps exist — everyone appears, even at zero
+  // wins, so the whole team is always visible on the board.
+  const hasRoster = rows.length > 0;
 
   return (
     <div className="max-w-3xl mx-auto py-8 px-4 space-y-6">
@@ -137,7 +163,7 @@ export const LeaderboardPage = () => {
         <div className="flex items-center gap-3">
           <Trophy className="w-6 h-6 text-primary" />
           <div>
-            <h1 className="text-2xl font-semibold">OSIRIS leaderboard</h1>
+            <h1 className="text-2xl font-semibold">Robin Line leaderboard</h1>
             <p className="text-sm text-muted-foreground">
               Closed-won deals across the team. Climb the chart by closing more.
             </p>
@@ -158,12 +184,12 @@ export const LeaderboardPage = () => {
 
       {isPending ? (
         <div className="py-12 text-center text-muted-foreground">Loading…</div>
-      ) : !hasAnyWins ? (
+      ) : !hasRoster ? (
         <Card>
           <CardContent className="py-10 text-center space-y-3">
-            <p className="text-base font-medium">No wins in this window.</p>
+            <p className="text-base font-medium">No reps yet.</p>
             <p className="text-sm text-muted-foreground">
-              Be the first to close a deal and you'll show up here.
+              Once your team signs up they'll show up here.
             </p>
             <div className="pt-2">
               <Button asChild>
@@ -201,6 +227,11 @@ export const LeaderboardPage = () => {
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
                       <span className="text-xs text-muted-foreground">
                         {row.wonCount} {row.wonCount === 1 ? "win" : "wins"}
+                      </span>
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <PhoneCall className="w-3 h-3" />
+                        {row.callCount}{" "}
+                        {row.callCount === 1 ? "call" : "calls"}
                       </span>
                       {row.streak >= 2 ? (
                         <span className="flex items-center gap-1 text-xs text-orange-500">

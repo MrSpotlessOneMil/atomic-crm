@@ -6,6 +6,9 @@ import {
   useListContext,
   type Exporter,
 } from "ra-core";
+import { Sparkles } from "lucide-react";
+import { Link } from "react-router";
+import { Button } from "@/components/ui/button";
 import { BulkActionsToolbar } from "@/components/admin/bulk-actions-toolbar";
 import { BulkDeleteButton } from "@/components/admin/bulk-delete-button";
 import { BulkExportButton } from "@/components/admin/bulk-export-button";
@@ -87,6 +90,12 @@ const ContactBulkActionButtons = () => (
 const ContactListActions = () => (
   <TopToolbar>
     <SortButton fields={["first_name", "last_name", "last_seen"]} />
+    <Button asChild variant="outline" size="sm">
+      <Link to="/ai-add-contact">
+        <Sparkles className="w-4 h-4 mr-2" />
+        AI Add
+      </Link>
+    </Button>
     <ContactImportButton />
     <ExportButton exporter={exporter} />
     <CreateButton />

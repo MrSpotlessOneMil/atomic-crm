@@ -115,7 +115,7 @@ const handle = async (req: Request, user?: User) => {
         amount: String(payout.amount_cents),
         currency: "usd",
         destination: rep.stripe_account_id,
-        description: `OSIRIS payout #${payout.id}`,
+        description: `Robin Line payout #${payout.id}`,
         "metadata[payout_id]": String(payout.id),
         "metadata[sales_id]": String(payout.sales_id),
       },

@@ -18,6 +18,7 @@ import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { useConfigurationContext } from "../root/ConfigurationContext";
 import { ImportPage } from "../misc/ImportPage";
 import { NotificationsBell } from "../notifications/NotificationsBell";
+import { useInboxUnread } from "../inbox/useInboxUnread";
 import { GlobalSearch } from "./GlobalSearch";
 
 const Header = () => {
@@ -34,8 +35,12 @@ const Header = () => {
     currentPath = "/companies";
   } else if (matchPath("/deals/*", location.pathname)) {
     currentPath = "/deals";
+  } else if (matchPath("/inbox/*", location.pathname)) {
+    currentPath = "/inbox";
   } else if (matchPath("/payouts/*", location.pathname)) {
     currentPath = "/payouts";
+  } else if (matchPath("/calls/*", location.pathname)) {
+    currentPath = "/calls";
   } else if (matchPath("/leaderboard/*", location.pathname)) {
     currentPath = "/leaderboard";
   } else if (matchPath("/community/*", location.pathname)) {
@@ -94,10 +99,19 @@ const Header = () => {
                     to="/deals"
                     isActive={currentPath === "/deals"}
                   />
+                  <InboxTab
+                    label={translate("crm.nav.inbox", { _: "Inbox" })}
+                    isActive={currentPath === "/inbox"}
+                  />
                   <NavigationTab
                     label={translate("crm.nav.payouts", { _: "Payouts" })}
                     to="/payouts"
                     isActive={currentPath === "/payouts"}
+                  />
+                  <NavigationTab
+                    label={translate("crm.nav.calls", { _: "Calls" })}
+                    to="/calls"
+                    isActive={currentPath === "/calls"}
                   />
                   <NavigationTab
                     label={translate("crm.nav.leaderboard", {
@@ -110,6 +124,11 @@ const Header = () => {
                     label={translate("crm.nav.community", { _: "Community" })}
                     to="/community"
                     isActive={currentPath === "/community"}
+                  />
+                  <NavigationTab
+                    label={translate("crm.nav.resources", { _: "Resources" })}
+                    to="/resources"
+                    isActive={currentPath === "/resources"}
                   />
                 </nav>
               </div>
@@ -145,22 +164,42 @@ const NavigationTab = ({
   label,
   to,
   isActive,
+  badge,
 }: {
   label: string;
   to: string;
   isActive: boolean;
+  badge?: number;
 }) => (
   <Link
     to={to}
-    className={`px-6 py-3 text-sm font-medium transition-colors border-b-2 ${
+    className={`relative px-6 py-3 text-sm font-medium transition-colors border-b-2 ${
       isActive
         ? "text-secondary-foreground border-secondary-foreground"
         : "text-secondary-foreground/70 border-transparent hover:text-secondary-foreground/80"
     }`}
   >
     {label}
+    {badge ? (
+      <span className="absolute top-1.5 right-1.5 min-w-4 h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold flex items-center justify-center">
+        {badge > 9 ? "9+" : badge}
+      </span>
+    ) : null}
   </Link>
 );
+
+// Inbox tab with a live "new replies" badge.
+const InboxTab = ({ label, isActive }: { label: string; isActive: boolean }) => {
+  const unread = useInboxUnread();
+  return (
+    <NavigationTab
+      label={label}
+      to="/inbox"
+      isActive={isActive}
+      badge={unread}
+    />
+  );
+};
 
 const UsersMenu = () => {
   const translate = useTranslate();

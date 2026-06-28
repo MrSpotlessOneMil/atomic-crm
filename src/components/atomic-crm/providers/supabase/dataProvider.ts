@@ -139,8 +139,18 @@ const getDataProviderWithCustomMethods = () => {
       id: Identifier,
       data: Partial<Omit<SalesFormData, "password">>,
     ) {
-      const { email, first_name, last_name, administrator, avatar, disabled } =
-        data;
+      const {
+        email,
+        first_name,
+        last_name,
+        administrator,
+        avatar,
+        disabled,
+        platform,
+        territory,
+        sdr_role,
+        quo_phone,
+      } = data;
 
       const { data: updatedData, error } =
         await getSupabaseClient().functions.invoke<{
@@ -155,6 +165,10 @@ const getDataProviderWithCustomMethods = () => {
             administrator,
             disabled,
             avatar,
+            platform,
+            territory,
+            sdr_role,
+            quo_phone,
           },
         });
 
@@ -164,6 +178,131 @@ const getDataProviderWithCustomMethods = () => {
       }
 
       return updatedData.data;
+    },
+    async sendQuoSms(params: {
+      to: string;
+      content: string;
+      contact_id?: Identifier;
+    }) {
+      const { data, error } = await getSupabaseClient().functions.invoke<{
+        data: unknown;
+      }>("quo_send_sms", { method: "POST", body: params });
+      if (error) {
+        // Surface the edge function's error message when available.
+        let message = "Failed to send the text.";
+        try {
+          const body = await (error as any).context?.json?.();
+          if (body?.message) message = body.message;
+        } catch {
+          /* ignore */
+        }
+        throw new Error(message);
+      }
+      return data;
+    },
+    async quoMessages(to: string) {
+      const { data, error } = await getSupabaseClient().functions.invoke<{
+        data: Array<{
+          id: string;
+          text: string;
+          direction: "incoming" | "outgoing";
+          createdAt: string;
+          status?: string;
+        }>;
+      }>("quo_messages", { method: "POST", body: { to } });
+      if (error) {
+        let message = "Could not load the conversation.";
+        try {
+          const body = await (error as any).context?.json?.();
+          if (body?.message) message = body.message;
+        } catch {
+          /* ignore */
+        }
+        throw new Error(message);
+      }
+      return data?.data ?? [];
+    },
+    async quoCalls(to: string) {
+      const { data, error } = await getSupabaseClient().functions.invoke<{
+        data: Array<{
+          id: string;
+          direction: "incoming" | "outgoing";
+          status?: string;
+          createdAt: string;
+          duration: number | null;
+          recordingUrl: string | null;
+          transcript: string;
+        }>;
+      }>("quo_calls", { method: "POST", body: { to } });
+      if (error) {
+        let message = "Could not load calls.";
+        try {
+          const body = await (error as any).context?.json?.();
+          if (body?.message) message = body.message;
+        } catch {
+          /* ignore */
+        }
+        throw new Error(message);
+      }
+      return data?.data ?? [];
+    },
+    async quoConversations() {
+      const { data, error } = await getSupabaseClient().functions.invoke<{
+        data: Array<{
+          id: string;
+          phone: string;
+          name: string | null;
+          lastActivityAt: string | null;
+        }>;
+      }>("quo_conversations", { method: "POST", body: {} });
+      if (error) {
+        let message = "Could not load conversations.";
+        try {
+          const body = await (error as any).context?.json?.();
+          if (body?.message) message = body.message;
+        } catch {
+          /* ignore */
+        }
+        throw new Error(message);
+      }
+      return data?.data ?? [];
+    },
+    async aiExtractContact(text: string) {
+      const { data, error } = await getSupabaseClient().functions.invoke<{
+        data: Record<string, string>;
+      }>("ai_extract_contact", { method: "POST", body: { text } });
+      if (error) {
+        let message = "AI extraction failed.";
+        try {
+          const body = await (error as any).context?.json?.();
+          if (body?.message) message = body.message;
+        } catch {
+          /* ignore */
+        }
+        throw new Error(message);
+      }
+      return data?.data ?? {};
+    },
+    async sendGmail(params: {
+      to: string;
+      subject: string;
+      body: string;
+      contact_id?: Identifier;
+    }) {
+      const { data, error } = await getSupabaseClient().functions.invoke<{
+        data: unknown;
+      }>("gmail_send", { method: "POST", body: params });
+      if (error) {
+        let message = "Failed to send the email.";
+        try {
+          const body = await (error as any).context?.json?.();
+          if (body?.message) message = body.message;
+        } catch {
+          /* ignore */
+        }
+        throw new Error(message);
+      }
+      return data;
     },
     async updatePassword(id: Identifier) {
       const { data: passwordUpdated, error } =
@@ -253,7 +392,7 @@ const getDataProviderWithCustomMethods = () => {
           ?.status;
         if (status === 503) {
           throw new Error(
-            "OSIRIS assistant is not configured. Ask an admin to set ANTHROPIC_API_KEY.",
+            "Robin Line Assistant is not configured. Ask an admin to set ANTHROPIC_API_KEY.",
           );
         }
         throw new Error("Assistant request failed");
@@ -295,7 +434,7 @@ const getDataProviderWithCustomMethods = () => {
       if (!res.ok || !res.body) {
         if (res.status === 503) {
           throw new Error(
-            "OSIRIS assistant is not configured. Ask an admin to set ANTHROPIC_API_KEY.",
+            "Robin Line Assistant is not configured. Ask an admin to set ANTHROPIC_API_KEY.",
           );
         }
         throw new Error("Assistant request failed");

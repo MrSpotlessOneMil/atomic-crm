@@ -141,7 +141,7 @@ export const OsirisAssistantWidget = ({
         <div className="flex items-center gap-2">
           <Bot className="w-4 h-4 text-primary" />
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-            OSIRIS assistant
+            Robin Line Assistant
           </h2>
         </div>
 
@@ -229,7 +229,7 @@ export const OsirisAssistantWidget = ({
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask OSIRIS…"
+            placeholder="Ask Robin Line…"
             disabled={isPending}
             onKeyDown={(e) => {
               if (e.key === "Enter") submit();

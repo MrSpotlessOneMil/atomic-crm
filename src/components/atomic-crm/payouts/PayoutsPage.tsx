@@ -150,7 +150,7 @@ export const PayoutsPage = () => {
       rows.push(baseCols);
     }
     const stamp = new Date().toISOString().slice(0, 10);
-    downloadCsv(`osiris-payouts-${stamp}.csv`, rows);
+    downloadCsv(`robinline-payouts-${stamp}.csv`, rows);
   };
 
   const totals = (payouts ?? []).reduce(
@@ -172,8 +172,8 @@ export const PayoutsPage = () => {
             <h1 className="text-2xl font-semibold">Payouts</h1>
             <p className="text-sm text-muted-foreground">
               {isAdmin
-                ? "All payouts across the team. Approve and mark paid as you go."
-                : "Your commission on every closed-won deal."}
+                ? "All payouts across the team. Approve, send via Zelle, then mark paid."
+                : "What you've earned. Payouts are sent via Zelle."}
             </p>
           </div>
         </div>
@@ -317,47 +317,16 @@ const AdminActions = ({ payout }: { payout: DealPayout }) => {
 
   const { mutate: markPaid, isPending: marking } = useMutation({
     mutationFn: async () => {
-      // Try Stripe transfer first. Falls back to a plain DB mark-paid if the
-      // function is unavailable (503) or the rep hasn't connected Stripe.
-      try {
-        const supabase = (
-          dataProvider as unknown as { __testSupabase?: never }
-        ) as never;
-        void supabase;
-      } catch {
-        // ignore
-      }
-      const supabaseClient = (
-        await import("../providers/supabase/supabase")
-      ).getSupabaseClient();
-      const { error } = await supabaseClient.functions.invoke(
-        "stripe_payout_trigger",
-        { method: "POST", body: { payout_id: payout.id } },
-      );
-      if (error) {
-        const status = (error as { context?: { status?: number } })?.context
-          ?.status;
-        // 503 = stripe not configured. 400 = rep hasn't onboarded. Fall back
-        // to a plain mark-paid in both cases.
-        if (status === 503 || status === 400) {
-          await dataProvider.update("deal_payouts", {
-            id: payout.id,
-            data: { status: "paid", paid_at: new Date().toISOString() },
-            previousData: payout,
-          });
-          return { fallback: true } as const;
-        }
-        throw new Error("stripe_payout_trigger failed");
-      }
-      return { fallback: false } as const;
+      // Payouts are sent manually via Zelle, then marked paid here.
+      await dataProvider.update("deal_payouts", {
+        id: payout.id,
+        data: { status: "paid", paid_at: new Date().toISOString() },
+        previousData: payout,
+      });
     },
-    onSuccess: (res) => {
+    onSuccess: () => {
       notify("crm.payouts.paid", {
-        messageArgs: {
-          _: res.fallback
-            ? "Payout marked paid (Stripe not configured for this rep)"
-            : "Payout paid via Stripe",
-        },
+        messageArgs: { _: "Marked paid (Zelle)" },
       });
       queryClient.invalidateQueries({ queryKey: ["deal_payouts"] });
     },

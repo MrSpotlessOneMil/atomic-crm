@@ -211,6 +211,20 @@ const ContactMiscInputs = () => {
       <h6 className="text-lg font-semibold">
         {translate("resources.contacts.field_categories.misc")}
       </h6>
+      <SelectInput
+        source="lead_source"
+        label="Where they came from"
+        choices={[
+          { id: "instagram", name: "Instagram" },
+          { id: "tiktok", name: "TikTok" },
+          { id: "facebook", name: "Facebook" },
+          { id: "cold-call", name: "Cold Call" },
+          { id: "inbound", name: "Inbound" },
+          { id: "referral", name: "Referral" },
+          { id: "other", name: "Other" },
+        ]}
+        helperText={false}
+      />
       <TextInput source="background" multiline helperText={false} />
       <BooleanInput source="has_newsletter" helperText={false} />
       <ReferenceInput

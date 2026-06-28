@@ -5,7 +5,7 @@ export const defaultLightModeLogo = "./logos/logo_atomic_crm_light.svg";
 
 export const defaultCurrency = "USD";
 
-export const defaultTitle = "Atomic CRM";
+export const defaultTitle = "Robin Line";
 
 export const defaultCompanySectors = [
   { value: "communication-services", label: "Communication Services" },
@@ -21,23 +21,32 @@ export const defaultCompanySectors = [
   { value: "utilities", label: "Utilities" },
 ];
 
+// Robin Line SDR → AE funnel. SDRs own the top (Lead → Demo Booked);
+// AEs take it from Demo Done through Closed. "won"/"lost" values are kept
+// because the payout + leaderboard logic keys on stage = 'won'.
 export const defaultDealStages = [
-  { value: "opportunity", label: "Opportunity" },
+  { value: "lead", label: "Lead / Prospect" },
+  { value: "contacted", label: "Contacted / Outreach Sent" },
+  { value: "demo-booked", label: "Demo Booked" },
+  { value: "demo-done", label: "Demo Done" },
   { value: "proposal-sent", label: "Proposal Sent" },
   { value: "in-negociation", label: "In Negotiation" },
-  { value: "won", label: "Won" },
-  { value: "lost", label: "Lost" },
-  { value: "delayed", label: "Delayed" },
+  { value: "won", label: "Closed Won" },
+  { value: "lost", label: "Closed Lost" },
 ];
 
-export const defaultDealPipelineStatuses = ["won"];
+// Closed-out stages drop off the active board.
+export const defaultDealPipelineStatuses = ["won", "lost"];
 
+// Repurposed as Lead Source — where the prospect came from.
 export const defaultDealCategories = [
+  { value: "instagram", label: "Instagram" },
+  { value: "tiktok", label: "TikTok" },
+  { value: "facebook", label: "Facebook" },
+  { value: "cold-call", label: "Cold Call" },
+  { value: "inbound", label: "Inbound" },
+  { value: "referral", label: "Referral" },
   { value: "other", label: "Other" },
-  { value: "copywriting", label: "Copywriting" },
-  { value: "print-project", label: "Print project" },
-  { value: "ui-design", label: "UI Design" },
-  { value: "website-design", label: "Website design" },
 ];
 
 export const defaultNoteStatuses = [
@@ -47,16 +56,16 @@ export const defaultNoteStatuses = [
   { value: "in-contract", label: "In Contract", color: "#a4e87d" },
 ];
 
+// SDR-facing activity types — what reps actually log each day.
 export const defaultTaskTypes = [
   { value: "none", label: "None" },
-  { value: "email", label: "Email" },
-  { value: "demo", label: "Demo" },
-  { value: "lunch", label: "Lunch" },
-  { value: "meeting", label: "Meeting" },
+  { value: "dm", label: "DM / Social outreach" },
+  { value: "call", label: "Cold call" },
   { value: "follow-up", label: "Follow-up" },
-  { value: "thank-you", label: "Thank you" },
-  { value: "ship", label: "Ship" },
-  { value: "call", label: "Call" },
+  { value: "confirmation", label: "Confirmation" },
+  { value: "demo", label: "Demo" },
+  { value: "email", label: "Email" },
+  { value: "meeting", label: "Meeting" },
 ];
 
 export const defaultPayouts = {

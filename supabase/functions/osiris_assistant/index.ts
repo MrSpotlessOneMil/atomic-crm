@@ -13,20 +13,33 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { AuthMiddleware, UserMiddleware } from "../_shared/authentication.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
+import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
+
+// Read the Anthropic key from the locked integration_secrets table, falling
+// back to a function secret if present.
+async function getAnthropicKey(): Promise<string | null> {
+  const { data } = await supabaseAdmin
+    .from("integration_secrets")
+    .select("value")
+    .eq("key", "ANTHROPIC_API_KEY")
+    .single();
+  return data?.value ?? Deno.env.get("ANTHROPIC_API_KEY") ?? null;
+}
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const DEFAULT_MODEL = "claude-haiku-4-5";
+const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
 const MAX_TOKENS = 1024;
 
-const SYSTEM_PROMPT = `You are OSIRIS, an AI sales coach for a residential and commercial cleaning company called Spotless Scrubbers.
-You help newly-onboarded sales reps:
-- Find leads (residential, commercial, recurring contracts)
-- Qualify prospects fast
-- Handle objections (price, scheduling, trust, "I already have a cleaner")
-- Write outreach messages (SMS, email, voicemail scripts)
-- Move deals through the pipeline: discovery -> proposal -> in negotiation -> won
+const SYSTEM_PROMPT = `You are the Robin Line Assistant, an AI sales coach for SDRs at Robin Line.
+Robin Line is the AI operating system for cleaning companies (it answers leads, quotes, dispatches, collects payment, wins back customers). The SDR's one job is to book qualified demo calls with house/commercial cleaning-company owners — target 8 qualified shows/week.
+You help reps:
+- Work leads warmest-to-coldest (fresh ad leads/DMs -> follow-ups -> lists -> cold calls)
+- Qualify fast (owner? cleaning co? has/wants lead flow? can afford $599+? real admin pain?)
+- Handle objections (price -> "less than a VA, better than a VA"; "I already have a system"; trust -> built by an operator who runs a cleaning company)
+- Write outreach (TikTok/IG/FB DMs, SMS, email, cold-call openers)
+- Move deals: lead -> contacted -> demo booked -> demo done -> proposal -> won
 
-Be concrete and brief. Default to bullet points over prose. When the user asks for an outreach message, give them a draft they can send in under a minute. When they describe a deal, suggest the single highest-leverage next action. If they ask about commission/payouts, tell them to check the /payouts page in the app. Never make up Spotless Scrubbers policies you don't know - if you don't know, say so.`;
+Be concrete and brief. Default to bullet points. When asked for an outreach message, give a draft they can send in under a minute. When they describe a deal, suggest the single highest-leverage next action. Pricing: Starter $599, Growth $1,299, Scale $2,499/mo — reps book the demo, they don't negotiate price. Never invent Robin Line policies you don't know — if unsure, say so.`;
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -63,11 +76,11 @@ const handleChat = async (req: Request) => {
     return createErrorResponse(405, "Method Not Allowed");
   }
 
-  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+  const apiKey = await getAnthropicKey();
   if (!apiKey) {
     return createErrorResponse(
       503,
-      "OSIRIS assistant is not configured (ANTHROPIC_API_KEY missing).",
+      "Robin Line assistant is not configured (ANTHROPIC_API_KEY missing).",
     );
   }
 

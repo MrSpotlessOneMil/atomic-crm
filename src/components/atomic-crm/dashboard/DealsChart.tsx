@@ -8,11 +8,13 @@ import { findDealLabel } from "../deals/dealUtils";
 import { useConfigurationContext } from "../root/ConfigurationContext";
 import type { Deal } from "../types";
 
-const multiplier = {
-  opportunity: 0.2,
-  "proposal-sent": 0.5,
-  "in-negociation": 0.8,
-  delayed: 0.3,
+const multiplier: Record<string, number> = {
+  lead: 0.1,
+  contacted: 0.2,
+  "demo-booked": 0.4,
+  "demo-done": 0.6,
+  "proposal-sent": 0.75,
+  "in-negociation": 0.9,
 };
 
 const threeMonthsAgo = new Date(
@@ -63,8 +65,7 @@ export const DealsChart = memo(() => {
         pending: dealsByMonth[month]
           .filter((deal: Deal) => !["won", "lost"].includes(deal.stage))
           .reduce((acc: number, deal: Deal) => {
-            // @ts-expect-error - multiplier type issue
-            acc += deal.amount * multiplier[deal.stage];
+            acc += deal.amount * (multiplier[deal.stage] ?? 0);
             return acc;
           }, 0),
         lost: dealsByMonth[month]

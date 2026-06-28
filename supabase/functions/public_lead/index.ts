@@ -83,7 +83,7 @@ const handleSubmit = async (req: Request) => {
     message ? `Message: ${message}` : "",
     referredSalesId != null
       ? `Source: rep profile (/u/${referredSalesId})`
-      : "Source: public OSIRIS lead form",
+      : "Source: public Robin Line lead form",
   ]
     .filter(Boolean)
     .join("\n");
