@@ -221,7 +221,9 @@ const GmailConnectCard = ({
     url.searchParams.set("response_type", "code");
     url.searchParams.set(
       "scope",
-      "openid email https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar.readonly",
+      // calendar.events (write) lets the AI agent CREATE demo events + invites;
+      // calendar.readonly stays for free/busy + the gcal poller.
+      "openid email https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly",
     );
     url.searchParams.set("access_type", "offline");
     url.searchParams.set("prompt", "consent");
