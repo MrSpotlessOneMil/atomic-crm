@@ -15,8 +15,22 @@ import { createErrorResponse } from "../_shared/utils.ts";
 import { sendSalesSms, toE164, salesSendsPaused } from "../_shared/quoSales.ts";
 import { NO_SHOW } from "../_shared/salesCopy.ts";
 import { sendLeadEmail } from "../_shared/leadEmail.ts";
+import { hasBookedDemo } from "../_shared/bookingGuard.ts";
 
 const EMAIL_TASK_TYPES = ["speed_to_lead_email", "nurture_email"];
+
+// Top-of-funnel "chase" messages. Once a lead has booked a demo (even on a
+// duplicate contact), these are suppressed — see hasBookedDemo. Reminders
+// (reminder_sms) and no_show_check are intentionally NOT here: a booked lead
+// still needs those.
+const CHASE_TASK_TYPES = [
+  "speed_to_lead_sms",
+  "nurture_sms",
+  "sdr_call_drip_sms",
+  "agent_followup",
+  "speed_to_lead_email",
+  "nurture_email",
+];
 
 const BATCH = 25;
 const MAX_ATTEMPTS = 5;
@@ -228,6 +242,19 @@ async function handleEmailTask(task: TaskRow): Promise<Outcome> {
 
 async function processTask(task: TaskRow): Promise<Outcome> {
   const payload = task.payload ?? {};
+
+  // Booked-lead guard: if this is a chase message and the lead has already
+  // booked a demo (matched by identity, so duplicate contacts are covered),
+  // cancel it instead of sending. This is the single place that knows a lead has
+  // moved past the chase phase. Reminders + no-show checks are exempt.
+  if (
+    task.contact_id &&
+    CHASE_TASK_TYPES.includes(task.task_type) &&
+    (await hasBookedDemo(task.contact_id))
+  ) {
+    await setStatus(task.id, { status: "canceled", last_error: "already booked a demo (chase skipped)" });
+    return "skipped";
+  }
 
   // Action tasks (non-SMS) branch out first.
   if (task.task_type === "no_show_check") return await handleNoShowCheck(task);
