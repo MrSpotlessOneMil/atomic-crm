@@ -10,6 +10,9 @@ import { supabaseAdmin } from "./supabaseAdmin.ts";
 import { sendSalesSms, toE164 } from "./quoSales.ts";
 import { isCleanSms } from "./salesCopy.ts";
 import { assignToCloser } from "./handoff.ts";
+import { createCalendarEvent, getFreeBusy } from "./googleCalendar.ts";
+import { scheduleDemoReminders } from "./demoReminders.ts";
+import { recordBooking } from "./bookings.ts";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const DEFAULT_MODEL = "claude-sonnet-4-6";
@@ -96,7 +99,13 @@ async function loadHistory(
   }));
 }
 
-function systemPrompt(contact: ContactRow, deal: DealRow | null, companyName: string | null): string {
+function systemPrompt(
+  contact: ContactRow,
+  deal: DealRow | null,
+  companyName: string | null,
+  tz: string,
+  nowLine: string,
+): string {
   const known = [
     contact.first_name ? `name=${contact.first_name}` : "",
     companyName ? `company=${companyName}` : "",
@@ -123,11 +132,13 @@ STYLE (this is SMS):
 
 PLAYBOOK:
 - Qualify naturally across the chat: are they the owner/decision-maker; residential / commercial / both; roughly how big (solo, few cleaners, bigger); are they already getting leads (running Meta/Google ads or steady jobs); what's the real headache (missed leads, slow follow-up, scheduling chaos, no-shows, paying a VA); can they invest about $599+/mo.
-- QUALIFY BEFORE YOU BOOK - this is the most important thing. Robin Line fits established operators who have real lead flow and can afford it. If they ARE a fit, drive to the demo: call send_booking_link and put the link in your text, confirm a day if they name one. If they are clearly NOT a fit yet (just starting, no leads, can't do $599, not the owner), do NOT book a demo - be warm, tell them what to fix first, offer to keep them posted, and call qualify_lead + log_note. Booking tire-kickers who then ghost is exactly what we are trying to stop.
+- QUALIFY BEFORE YOU BOOK - this is the most important thing. Robin Line fits established operators who have real lead flow and can afford it. If they ARE a fit, drive to the demo and BOOK IT YOURSELF: propose 2-3 specific times in ${tz}, ask for the best email for the calendar invite, and once they pick a time call book_appointment with start_iso (ISO 8601 with the ${tz} offset) plus their email - it creates the calendar invite + a google meet link and books it. Then confirm in ONE short text and include the meet link the tool returns. If they would rather pick their own slot, fall back to send_booking_link. If they are clearly NOT a fit yet (just starting, no leads, can't do $599, not the owner), do NOT book a demo - be warm, tell them what to fix first, offer to keep them posted, and call qualify_lead + log_note. Booking tire-kickers who then ghost is exactly what we are trying to stop.
 - Objections: "too busy" -> 15 min, we do the setup; "I have a system" -> Robin replies in seconds 24/7, most do not; "how much" -> Starter $599, Growth $1,299, Scale $2,499/mo, less than a VA - then steer to the demo to see ROI. Do NOT negotiate or discount.
 - Call tools to record what you learn (qualify_lead), move the deal (advance_stage), and leave a note (log_note).
 - If they say stop/unsubscribe/opt out, call opt_out and send nothing else.
 - Hand off to a human (handoff_to_human) if: they are angry, it is a real pricing negotiation, they ask something you cannot answer, or they are clearly a big multi-location operator who wants a person.
+
+TIME: right now it is ${nowLine}. Quote times to the lead in ${tz}, and build start_iso for book_appointment as ISO 8601 with that timezone's offset (e.g. 2026-07-02T14:00:00-07:00). Only book future times.
 
 Use the tools to do the work; your final text is the SMS that gets sent to them. If a tool already says everything (e.g. opt_out), reply with an empty message.
 Known so far: ${known || "nothing yet"}.`;
@@ -138,13 +149,14 @@ function toolDefs() {
     {
       name: "save_identity",
       description:
-        "Save the lead's real name and/or company to the CRM the moment you learn them (from their reply, or a website they sent). Call this EARLY so we stop calling them 'Lead'.",
+        "Save the lead's real name, company, and/or email to the CRM the moment you learn them (from their reply, or a website they sent). Call this EARLY so we stop calling them 'Lead'.",
       input_schema: {
         type: "object",
         properties: {
           first_name: { type: "string" },
           last_name: { type: "string" },
           company_name: { type: "string" },
+          email: { type: "string", description: "the lead's email, e.g. for the calendar invite" },
         },
       },
     },
@@ -165,8 +177,26 @@ function toolDefs() {
     {
       name: "send_booking_link",
       description:
-        "Get the Calendly demo link and move the deal to 'contacted'. Call this when you're ready to book them; then include the returned url in your text.",
+        "FALLBACK booking: get the Calendly demo link and move the deal to 'contacted'. Use only when the lead would rather pick their own slot; otherwise prefer book_appointment. Include the returned url in your text.",
       input_schema: { type: "object", properties: {} },
+    },
+    {
+      name: "book_appointment",
+      description:
+        "PREFERRED booking: book the demo DIRECTLY on the calendar. Only call once you've agreed a specific time AND ideally have their email. Creates a Google Calendar event with a Google Meet link, invites the lead + the closer, moves the deal to demo-booked, and schedules reminders. Put the returned join_url in your confirming text.",
+      input_schema: {
+        type: "object",
+        properties: {
+          start_iso: {
+            type: "string",
+            description:
+              "Agreed start time as ISO 8601 WITH timezone offset, e.g. 2026-07-02T14:00:00-07:00. Use the demo timezone from the system prompt.",
+          },
+          email: { type: "string", description: "the lead's email for the calendar invite (strongly preferred; ask first)" },
+          duration_minutes: { type: "number", description: "defaults to 15" },
+        },
+        required: ["start_iso"],
+      },
     },
     {
       name: "advance_stage",
@@ -232,6 +262,25 @@ async function cancelPendingTasks(contactId: number) {
     .eq("status", "pending");
 }
 
+// Append an email to the contact's email_jsonb (no duplicates). Best-effort.
+async function saveEmail(contactId: number, raw: string): Promise<void> {
+  const email = raw.trim().toLowerCase();
+  if (!email.includes("@")) return;
+  const { data } = await supabaseAdmin
+    .from("contacts")
+    .select("email_jsonb")
+    .eq("id", contactId)
+    .maybeSingle();
+  const arr = Array.isArray(data?.email_jsonb) ? [...(data!.email_jsonb as unknown[])] : [];
+  const has = arr.some((e) => {
+    const v = e && typeof e === "object" ? (e as Record<string, unknown>).email : e;
+    return String(v ?? "").toLowerCase() === email;
+  });
+  if (has) return;
+  arr.push({ email, type: "Work" });
+  await supabaseAdmin.from("contacts").update({ email_jsonb: arr }).eq("id", contactId);
+}
+
 async function execTool(
   name: string,
   input: Record<string, unknown>,
@@ -255,6 +304,7 @@ async function execTool(
         }
         if (companyId) await supabaseAdmin.from("contacts").update({ company_id: companyId }).eq("id", ctx.contact.id);
       }
+      if (input.email) await saveEmail(ctx.contact.id, String(input.email));
       return "saved";
     }
     case "qualify_lead": {
@@ -278,6 +328,95 @@ async function execTool(
         await supabaseAdmin.from("deals").update({ stage: "contacted", updated_at: new Date().toISOString() }).eq("id", ctx.deal.id);
       }
       return JSON.stringify({ url });
+    }
+    case "book_appointment": {
+      if (!ctx.deal) return "no open deal";
+      const startISO = String(input.start_iso ?? "").trim();
+      const startMs = Date.parse(startISO);
+      if (!Number.isFinite(startMs)) {
+        return "invalid start_iso; pass ISO 8601 with offset like 2026-07-02T14:00:00-07:00";
+      }
+      if (startMs < Date.now() + 5 * 60_000) return "that time is in the past; propose a future time";
+
+      const tz = (await getSecret("DEMO_TIMEZONE")) || "America/Los_Angeles";
+      const closerId = Number((await getSecret("CLOSER_SALES_ID")) ?? 4) || 4;
+      const duration = Math.max(
+        10,
+        Math.min(120, Number(input.duration_minutes) || Number(await getSecret("DEMO_DURATION_MINUTES")) || 15),
+      );
+
+      const email = input.email ? String(input.email).trim() : "";
+      const hasEmail = email.includes("@");
+      if (hasEmail) await saveEmail(ctx.contact.id, email);
+
+      // Conflict check (fail-open inside getFreeBusy).
+      const endISO = new Date(startMs + duration * 60_000).toISOString();
+      const fb = await getFreeBusy({ salesId: closerId, startISO, endISO });
+      if (fb.free === false) return "that time is taken on the calendar; propose another slot";
+
+      const name = ctx.contact.first_name || "lead";
+      const ev = await createCalendarEvent({
+        salesId: closerId,
+        summary: `Robin Line demo - ${name}`,
+        description:
+          `Robin Line demo booked by ${agentName()} (AI).\nLead phone: ${ctx.phone}` +
+          (hasEmail ? `\nLead email: ${email}` : "") +
+          (ctx.deal.pain_point ? `\nPain: ${ctx.deal.pain_point}` : ""),
+        startISO,
+        durationMinutes: duration,
+        timeZone: tz,
+        attendeeEmails: hasEmail ? [email] : [],
+        addMeet: true,
+      });
+      if (!ev.ok) {
+        console.error("[salesAgent] book_appointment calendar insert failed", ev.error);
+        const url = (await getSecret("CALENDLY_BOOKING_URL")) || "https://calendly.com/dominic-theosirisai/cleaning-gameplan";
+        return JSON.stringify({ ok: false, fallback_url: url, note: "couldn't auto-book; send this link instead" });
+      }
+
+      // Downstream (all idempotent). Mirrors calendly_webhook's demo-booked path.
+      await supabaseAdmin.from("deals").update({
+        stage: "demo-booked",
+        next_action: `Demo ${startISO.slice(0, 16).replace("T", " ")}`.slice(0, 200),
+        next_action_date: new Date(startMs).toISOString().slice(0, 10),
+        updated_at: new Date().toISOString(),
+      }).eq("id", ctx.deal.id);
+      await assignToCloser({
+        dealId: ctx.deal.id,
+        contactId: ctx.contact.id,
+        reason: "demo_booked",
+        summary: `Demo booked by AI for ${startISO}`,
+      });
+      await recordBooking({
+        contactId: ctx.contact.id,
+        scheduledFor: startISO,
+        durationMinutes: duration,
+        notes: `Demo booked by AI agent${hasEmail ? " - " + email : ""}`,
+      });
+      // Clear pending nurture/old reminders, then schedule the fresh demo cadence.
+      await cancelPendingTasks(ctx.contact.id);
+      await scheduleDemoReminders({
+        contactId: ctx.contact.id,
+        dealId: ctx.deal.id,
+        startISO,
+        durationMinutes: duration,
+        joinUrl: ev.meetUrl,
+        timeZone: tz,
+      });
+      await supabaseAdmin.from("contact_notes").insert({
+        contact_id: ctx.contact.id,
+        text: `📅 Demo booked by ${agentName()} (AI) for ${startISO} (${tz}). Meet: ${ev.meetUrl || "n/a"}${ev.htmlLink ? " | " + ev.htmlLink : ""}`,
+        date: new Date().toISOString(),
+        status: "warm",
+      });
+
+      return JSON.stringify({
+        ok: true,
+        when: startISO,
+        timezone: tz,
+        join_url: ev.meetUrl || "",
+        invited: hasEmail ? email : "none (no email; text them the join_url)",
+      });
     }
     case "advance_stage": {
       const stage = String(input.stage ?? "");
@@ -389,7 +528,16 @@ export async function runSalesAgentTurn(contactId: number): Promise<string | nul
 
   const messages: Array<{ role: string; content: unknown }> = history.map((m) => ({ role: m.role, content: m.content }));
   const tools = toolDefs();
-  const system = systemPrompt(contact as ContactRow, deal, companyName);
+  const tz = (await getSecret("DEMO_TIMEZONE")) || "America/Los_Angeles";
+  let nowLine: string;
+  try {
+    nowLine = new Intl.DateTimeFormat("en-US", {
+      weekday: "long", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: tz,
+    }).format(new Date()) + ` (${tz})`;
+  } catch {
+    nowLine = new Date().toUTCString();
+  }
+  const system = systemPrompt(contact as ContactRow, deal, companyName, tz, nowLine);
 
   let replyText = "";
   for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
