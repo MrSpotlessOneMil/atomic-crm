@@ -15,6 +15,7 @@ import { createErrorResponse } from "../_shared/utils.ts";
 import { toE164 } from "../_shared/quoSales.ts";
 import { OPENER, NURTURE, EMAIL_OPENER, EMAIL_NURTURE, render } from "../_shared/salesCopy.ts";
 import { openerForSource, isColdSource } from "../_shared/leadPlaybooks.ts";
+import { contactIdsByIdentity, hasRecentCadence } from "../_shared/contactIdentity.ts";
 
 type Body = {
   first_name?: string;
@@ -99,9 +100,12 @@ const handle = async (req: Request) => {
   // (warm email drip). Email-only opt-ins are now captured too.
   if (!e164 && !email) return createErrorResponse(400, "phone or email required");
 
-  // Find or create the contact. Dedupe by phone when present (E.164-normalized),
-  // else by email.
-  let contactId = e164 ? await findContactByPhone(e164) : await findContactByEmail(email);
+  // Find or create the contact. Dedupe by phone FIRST, then fall back to email,
+  // so a repeat opt-in that arrives on a different channel (or whose phone
+  // lookup races) reuses the existing contact instead of spawning a duplicate.
+  let contactId: number | null = null;
+  if (e164) contactId = await findContactByPhone(e164);
+  if (!contactId && email) contactId = await findContactByEmail(email);
   if (contactId) {
     await supabaseAdmin
       .from("contacts")
@@ -171,14 +175,16 @@ const handle = async (req: Request) => {
     dealId = d.data.id;
   }
 
-  // Enqueue speed-to-lead + nurture, but only if nothing's pending already
-  // (prevents double-texting on a repeat opt-in / multiple magnets).
-  const { data: pending } = await supabaseAdmin
-    .from("scheduled_tasks")
-    .select("id")
-    .eq("contact_id", contactId)
-    .eq("status", "pending")
-    .limit(1);
+  // Enqueue speed-to-lead + nurture, but ONLY if this PERSON has no cadence
+  // already. Checked by IDENTITY (every contact sharing this phone/email), not
+  // just this contact_id — so a duplicate contact can never double-text them,
+  // no matter how the duplicate got created.
+  const identityIds = await contactIdsByIdentity(e164, email);
+  if (contactId && !identityIds.includes(contactId)) identityIds.push(contactId);
+  const cadenceExists = await hasRecentCadence(identityIds);
+  if (cadenceExists) {
+    console.info("[lead_inbound] cadence already active for this identity — skipping enqueue", { contactId });
+  }
 
   // Abuse cap: if a flood of tasks appeared in the last hour (e.g. someone
   // hammering the public form), record the lead but stop auto-texting so the
@@ -195,7 +201,7 @@ const handle = async (req: Request) => {
   // when sends resume. This guarantees no lead is ever logged without a cadence.
 
   let enqueued = 0;
-  if (!flooded && !cold && (!pending || pending.length === 0)) {
+  if (!flooded && !cold && !cadenceExists) {
     // {{first_name}} stays for send time; {{lead_magnet}} names what they grabbed.
     const vars = { rep_name: repName(), lead_magnet: magnet || "your free templates" };
     const now = Date.now();
