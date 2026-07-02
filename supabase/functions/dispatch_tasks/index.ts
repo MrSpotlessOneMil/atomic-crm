@@ -32,6 +32,23 @@ const CHASE_TASK_TYPES = [
   "nurture_email",
 ];
 
+// Safe {{first_name}} for greetings. Cold lists often dump the BUSINESS name
+// into first_name ("The Cleaning Authority", "The Maids in Scottsdale"), which
+// naively became "Hi The,". So: fall back to "there" when the name is empty, a
+// leading article, 3+ words, or contains an obvious business word. Only a clean
+// single personal name is used verbatim.
+const BIZ_WORDS = /\b(cleaning|clean|services?|company|co|llc|inc|maids?|janitorial|solutions?|group|enterprises?|cleaners?)\b/i;
+function greetingName(raw: string | null | undefined): string {
+  const full = (raw ?? "").trim();
+  if (!full) return "there";
+  const parts = full.split(/\s+/);
+  const first = parts[0];
+  if (/^(the|a|an)$/i.test(first)) return "there";
+  if (parts.length >= 3) return "there";
+  if (BIZ_WORDS.test(full)) return "there";
+  return first;
+}
+
 const BATCH = 25;
 const MAX_ATTEMPTS = 5;
 const DEFAULT_CALENDLY = "https://calendly.com/dominic-theosirisai/cleaning-gameplan";
@@ -309,7 +326,7 @@ async function processTask(task: TaskRow): Promise<Outcome> {
   }
 
   const content = render(String(payload.content ?? ""), {
-    first_name: (contact?.first_name ?? "").split(" ")[0] || "there",
+    first_name: greetingName(contact?.first_name),
   });
   if (!content.trim()) {
     await setStatus(task.id, { status: "failed", last_error: "empty content" });
