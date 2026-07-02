@@ -76,15 +76,16 @@ async function apolloOwner(domain: string, apiKey: string): Promise<OwnerHit> {
 const handle = async (req: Request) => {
   if (req.method !== "POST") return createErrorResponse(405, "Method Not Allowed");
 
-  const expected = Deno.env.get("DISPATCH_TASKS_TOKEN") || (await getSecret("DISPATCH_TASKS_TOKEN"));
-  if (!expected || req.headers.get("X-DISPATCH-TOKEN") !== expected) {
-    return createErrorResponse(401, "Unauthorized");
-  }
-
-  let body: { limit?: number; dry_run?: boolean } = {};
+  // Platform auth (verify_jwt) gates the endpoint; runs via `supabase functions
+  // invoke`. Because this spends Apollo credits + rewrites names, WRITES require
+  // an explicit confirm:true — dry_run previews are always allowed.
+  let body: { limit?: number; dry_run?: boolean; confirm?: boolean } = {};
   try { body = await req.json(); } catch { /* defaults */ }
   const limit = Math.max(1, Math.min(100, Number(body.limit) || 25));
   const dryRun = body.dry_run === true;
+  if (!dryRun && body.confirm !== true) {
+    return createErrorResponse(400, "Refusing to write without confirm:true (or pass dry_run:true to preview)");
+  }
 
   const apiKey = await getSecret("APOLLO_API_KEY");
   if (!apiKey) return createErrorResponse(503, "APOLLO_API_KEY not set in integration_secrets");
