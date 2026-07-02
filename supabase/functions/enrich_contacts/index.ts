@@ -81,7 +81,7 @@ const handle = async (req: Request) => {
   // an explicit confirm:true — dry_run previews are always allowed.
   let body: { limit?: number; dry_run?: boolean; confirm?: boolean } = {};
   try { body = await req.json(); } catch { /* defaults */ }
-  const limit = Math.max(1, Math.min(100, Number(body.limit) || 25));
+  const limit = Math.max(1, Math.min(200, Number(body.limit) || 25));
   const dryRun = body.dry_run === true;
   if (!dryRun && body.confirm !== true) {
     return createErrorResponse(400, "Refusing to write without confirm:true (or pass dry_run:true to preview)");
@@ -97,6 +97,7 @@ const handle = async (req: Request) => {
     .select("id, first_name, last_name, company_id, companies(name, website)")
     .is("lead_source", null)
     .not("company_id", "is", null)
+    .or("title.is.null,title.neq.no-apollo-match") // skip ones we already tried + missed
     .limit(800);
   if (error) return createErrorResponse(500, `contacts query failed: ${error.message}`);
 
@@ -120,6 +121,8 @@ const handle = async (req: Request) => {
     }
     if (hit.none || !hit.first_name) {
       noMatch++;
+      // Mark it so future runs skip it (don't re-charge Apollo for a known miss).
+      if (!dryRun) await supabaseAdmin.from("contacts").update({ title: "no-apollo-match" }).eq("id", c.id);
       results.push({ id: c.id, company: c.company, domain: c.domain, status: "no_match" });
       continue;
     }
