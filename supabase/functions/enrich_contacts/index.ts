@@ -56,11 +56,11 @@ interface OwnerHit { first_name?: string; last_name?: string; title?: string; no
 
 // Apollo people search, matched by the org domain, biased to decision-maker titles.
 async function apolloOwner(domain: string, apiKey: string): Promise<OwnerHit> {
-  const res = await fetch("https://api.apollo.io/api/v1/mixed_people/search", {
+  const res = await fetch("https://api.apollo.io/api/v1/mixed_people/api_search", {
     method: "POST",
     headers: { "Content-Type": "application/json", "Cache-Control": "no-cache", "X-Api-Key": apiKey },
     body: JSON.stringify({
-      q_organization_domains: domain,
+      q_organization_domains_list: [domain],
       person_titles: ["owner", "founder", "co-founder", "ceo", "president", "principal", "managing member", "operations manager"],
       page: 1,
       per_page: 1,
