@@ -16,6 +16,7 @@ import { createErrorResponse } from "../_shared/utils.ts";
 import { getSalesNumber, toE164, salesSendsPaused, logSms } from "../_shared/quoSales.ts";
 import { runSalesAgentTurn } from "../_shared/salesAgent.ts";
 import { enrichFromMessage } from "../_shared/enrich.ts";
+import { closeOpenCallTasks } from "../_shared/callTasks.ts";
 
 const STOP_RE = /^\s*(stop|stopall|unsubscribe|end|quit|cancel|optout|opt out)\s*$/i;
 
@@ -201,16 +202,19 @@ const handle = async (req: Request) => {
       .update({ status: "canceled", updated_at: new Date().toISOString() })
       .eq("contact_id", contactId)
       .eq("status", "pending");
+    // Also close any already-bridged CALL NOW items — nobody dials an opt-out.
+    await closeOpenCallTasks(contactId);
     return ok();
   }
 
-  // They replied -> stop the nurture chase, then let the agent respond.
+  // They replied -> stop the nurture chase (texts AND the double-dial cadence:
+  // the live conversation owns them now), then let the agent respond.
   await supabaseAdmin
     .from("scheduled_tasks")
     .update({ status: "canceled", updated_at: new Date().toISOString() })
     .eq("contact_id", contactId)
     .eq("status", "pending")
-    .in("task_type", ["nurture_sms", "speed_to_lead_sms"]);
+    .in("task_type", ["nurture_sms", "speed_to_lead_sms", "call_task"]);
 
   // Global pause: the inbound text is logged above (CRM timeline + transcript),
   // but the AI agent does NOT auto-reply. A human handles it from OpenPhone/CRM.

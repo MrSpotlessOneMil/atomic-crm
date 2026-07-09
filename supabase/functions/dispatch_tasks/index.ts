@@ -16,6 +16,15 @@ import { sendSalesSms, toE164, salesSendsPaused } from "../_shared/quoSales.ts";
 import { NO_SHOW } from "../_shared/salesCopy.ts";
 import { sendLeadEmail } from "../_shared/leadEmail.ts";
 import { hasBookedDemo } from "../_shared/bookingGuard.ts";
+import { handleCallTask } from "./callTask.ts";
+import {
+  MAX_ATTEMPTS,
+  type Outcome,
+  type TaskRow,
+  firstPhone,
+  isQuietHours,
+  setStatus,
+} from "./taskUtil.ts";
 
 const EMAIL_TASK_TYPES = ["speed_to_lead_email", "nurture_email"];
 
@@ -30,6 +39,7 @@ const CHASE_TASK_TYPES = [
   "agent_followup",
   "speed_to_lead_email",
   "nurture_email",
+  "call_task",
 ];
 
 // Safe {{first_name}} for greetings. Cold lists often dump the BUSINESS name
@@ -50,53 +60,10 @@ function greetingName(raw: string | null | undefined): string {
 }
 
 const BATCH = 25;
-const MAX_ATTEMPTS = 5;
 const DEFAULT_CALENDLY = "https://calendly.com/dominic-theosirisai/cleaning-gameplan";
 
-interface TaskRow {
-  id: number;
-  deal_id: number | null;
-  contact_id: number | null;
-  task_type: string;
-  payload: Record<string, unknown>;
-  run_at: string;
-  attempts: number;
-}
-
-// contacts.phone_jsonb is an array of { number, type } (or, defensively, strings).
-function firstPhone(
-  contact: { phone_jsonb?: unknown } | null,
-  payloadTo?: unknown,
-): string | null {
-  if (typeof payloadTo === "string" && payloadTo.trim()) return payloadTo;
-  const pj = contact?.phone_jsonb;
-  if (Array.isArray(pj)) {
-    for (const entry of pj) {
-      if (typeof entry === "string" && entry.trim()) return entry;
-      if (entry && typeof entry === "object") {
-        const n = (entry as Record<string, unknown>).number;
-        if (typeof n === "string" && n.trim()) return n;
-      }
-    }
-  }
-  return null;
-}
-
-// Quiet hours: no automated SMS before 8am or at/after 8pm in the lead's tz.
-// TODO(Phase 1): set payload.tz from the lead's area code at enqueue time.
-function isQuietHours(tz: string): boolean {
-  try {
-    const parts = new Intl.DateTimeFormat("en-US", {
-      hour: "numeric",
-      hour12: false,
-      timeZone: tz,
-    }).formatToParts(new Date());
-    const h = parseInt(parts.find((p) => p.type === "hour")?.value ?? "12", 10) % 24;
-    return h < 8 || h >= 20;
-  } catch {
-    return false; // unknown tz → don't block the send
-  }
-}
+// TaskRow / Outcome / firstPhone / isQuietHours / setStatus live in
+// ./taskUtil.ts so callTask.ts and the vitest suites share one copy.
 
 function render(body: string, vars: Record<string, string>): string {
   return body.replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, k) => vars[k] ?? "");
@@ -113,13 +80,6 @@ async function claim(id: number): Promise<boolean> {
   return !!(data && data.length);
 }
 
-async function setStatus(id: number, fields: Record<string, unknown>) {
-  await supabaseAdmin
-    .from("scheduled_tasks")
-    .update({ ...fields, updated_at: new Date().toISOString() })
-    .eq("id", id);
-}
-
 async function getCalendlyUrl(): Promise<string> {
   const { data } = await supabaseAdmin
     .from("integration_secrets")
@@ -128,8 +88,6 @@ async function getCalendlyUrl(): Promise<string> {
     .single();
   return data?.value ?? DEFAULT_CALENDLY;
 }
-
-type Outcome = "sent" | "skipped" | "deferred" | "failed";
 
 // A demo whose deal is STILL 'demo-booked' after the demo window = probable
 // no-show. If a human already moved it (demo-done / won / lost), do nothing.
@@ -275,6 +233,7 @@ async function processTask(task: TaskRow): Promise<Outcome> {
 
   // Action tasks (non-SMS) branch out first.
   if (task.task_type === "no_show_check") return await handleNoShowCheck(task);
+  if (task.task_type === "call_task") return await handleCallTask(task);
   if (EMAIL_TASK_TYPES.includes(task.task_type)) return await handleEmailTask(task);
 
   // Stale guard: time-sensitive tasks (e.g. reminders) cancel themselves if

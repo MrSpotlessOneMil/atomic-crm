@@ -31,6 +31,35 @@ export function isColdSource(source: string): boolean {
   return (COLD_SOURCES as string[]).includes(source);
 }
 
+export const SOURCES = [
+  "instagram",
+  "tiktok",
+  "facebook",
+  "cold-call",
+  "website",
+  "cold-email",
+  "inbound",
+  "referral",
+  "other",
+];
+
+// Normalize whatever a caller labels a lead ("Meta Ads", "fb", "IG",
+// "website-audit"…) to one canonical source. Shared by lead_inbound and the
+// enroll_orphans sweep so both agree on what counts as warm.
+export function normalizeLeadSource(raw: string): string {
+  const p = raw.toLowerCase();
+  if (SOURCES.includes(p)) return p;
+  if (p.includes("insta") || p === "ig") return "instagram";
+  if (p.includes("tik")) return "tiktok";
+  if (p.includes("face") || p === "fb" || p.includes("meta")) return "facebook";
+  // Lead-magnet website / landing-page opt-ins get their OWN source so they're
+  // visible + measurable in the CRM (previously collapsed into "inbound").
+  if (p.includes("web") || p.includes("site") || p.includes("land") || p.includes("form")) return "website";
+  if (p.includes("cold-email") || p.includes("cold_email") || p.includes("coldemail")) return "cold-email";
+  if (p.includes("refer")) return "referral";
+  return "inbound";
+}
+
 // One tailored opener per warm source. Cold sources are intentionally absent —
 // openerForSource() returns null for them. `website` reuses the canonical
 // OPENER. Final wording is Dominic's call; these are first-pass.
@@ -50,10 +79,20 @@ export const OPENERS_BY_SOURCE: Record<string, string> = {
     "hey {{first_name}}, robin here from robin line, thanks for reaching out. you running a cleaning crew right now or just getting started?",
 };
 
+// Leads who requested the free AI AUDIT (the "GET MY AUDIT" form on the lead
+// magnet site) get an audit-specific first touch - they asked for a deliverable,
+// so the opener acknowledges it instead of pitching the templates.
+export const AUDIT_OPENER =
+  "hey {{first_name}}, robin here from robin line - got your audit request, putting it together now. quick q so it's accurate: you running a cleaning crew or solo right now?";
+
+const AUDIT_MAGNET_RE = /audit/i;
+
 // The warm opener for a source, or null for cold sources (use the audit play).
 // Unknown/unmapped sources fall back to the canonical OPENER so a lead is never
-// left without a first touch.
-export function openerForSource(source: string): string | null {
+// left without a first touch. Pass the lead magnet so audit requests get the
+// audit-specific opener regardless of source.
+export function openerForSource(source: string, magnet?: string): string | null {
   if (isColdSource(source)) return null;
+  if (magnet && AUDIT_MAGNET_RE.test(magnet)) return AUDIT_OPENER;
   return OPENERS_BY_SOURCE[source] ?? OPENER;
 }

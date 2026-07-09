@@ -6,6 +6,7 @@
 // (CLOSER_SALES_ID), matching the "AI books, humans close" handoff.
 
 import { supabaseAdmin } from "./supabaseAdmin.ts";
+import { closeOpenCallTasks } from "./callTasks.ts";
 
 async function closerSalesId(): Promise<number | null> {
   const { data } = await supabaseAdmin
@@ -26,6 +27,10 @@ export async function recordBooking(opts: {
   notes?: string;
 }): Promise<void> {
   try {
+    // Booked = stop chasing by phone: clear any open CALL NOW items (future
+    // call_task steps die via the booking guard / webhook cancellations).
+    await closeOpenCallTasks(opts.contactId);
+
     const salesId = await closerSalesId();
     if (!salesId) return; // can't satisfy NOT NULL sales_id; skip rather than throw
 

@@ -9,6 +9,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
+import { closeOpenCallTasks } from "../_shared/callTasks.ts";
 
 type RequestBody = {
   sales_id?: number | string;
@@ -189,6 +190,9 @@ const handle = async (req: Request) => {
     console.error("book_slot: booking insert failed", bookingErr);
     return createErrorResponse(500, "Failed to create booking");
   }
+
+  // Booked = stop chasing by phone: clear any open CALL NOW items for them.
+  if (contactId) await closeOpenCallTasks(contactId);
 
   return new Response(
     JSON.stringify({

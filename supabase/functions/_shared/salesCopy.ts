@@ -151,6 +151,8 @@ export const EMAIL_OPENER: EmailStep = {
     EMAIL_SIGNOFF,
 };
 
+// Six touches over a month (email drives real replies - one manual blast to the
+// list booked multiple demos), ending on the breakup at day 30.
 export const EMAIL_NURTURE: EmailStep[] = [
   {
     key: "email_1d",
@@ -173,6 +175,33 @@ export const EMAIL_NURTURE: EmailStep[] = [
   {
     key: "email_10d",
     offsetMinutes: 60 * 24 * 10,
+    subject: "what a slow reply costs",
+    body:
+      "{{first_name}}, quick math we run with owners: if a missed or slow-answered lead is worth ~$300 and you miss even 3 a week, that's roughly $45k a year walking to whoever answered first.\n\n" +
+      "Robin Line answers every lead in seconds, 24/7. Want me to run the same math on your numbers? Just reply with roughly how many leads you get a week." +
+      EMAIL_SIGNOFF,
+  },
+  {
+    key: "email_14d",
+    offsetMinutes: 60 * 24 * 14,
+    subject: "2-minute video instead?",
+    body:
+      "{{first_name}}, if a call feels like too much right now, I can send a 2-minute video of Robin Line answering a lead, quoting, and booking the job on its own - no meeting needed.\n\n" +
+      "Want the video? Just reply \"video\" and it's yours." +
+      EMAIL_SIGNOFF,
+  },
+  {
+    key: "email_21d",
+    offsetMinutes: 60 * 24 * 21,
+    subject: "the setup is on us",
+    body:
+      "{{first_name}}, the two things owners worry about before trying Robin Line: \"I don't have time to set it up\" (we do the setup with you, most are live in under a week) and \"my customers won't like it\" (they just get instant answers and easy booking - most never realize it isn't you).\n\n" +
+      "If either of those was your hesitation, want a quick look?" +
+      EMAIL_SIGNOFF,
+  },
+  {
+    key: "email_30d",
+    offsetMinutes: 60 * 24 * 30,
     subject: "closing your file",
     body:
       "{{first_name}}, I'll stop here so I'm not cluttering your inbox.\n\nIf running intake, dispatch, and collections by hand is working fine, no worries. If it's eating your nights, that's the one thing Robin Line takes off your plate - just reply and we'll talk." +

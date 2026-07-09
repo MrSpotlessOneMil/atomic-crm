@@ -2,9 +2,12 @@
 //
 // Works for any source that can POST an opt-in: ManyChat comment->DM flows AND
 // website lead-magnet landing pages (link -> they enter phone+email) AND
-// Typeform/GHL/etc. Each POSTs the lead's details; we create/locate the CRM
-// contact + deal (stage 'lead') and fire the instant speed-to-lead text + the
-// nurture cadence. The AI agent takes over on the reply.
+// Typeform/GHL/etc AND the meta_leads webhook (Meta Lead Ads). Each POSTs the
+// lead's details; we create/locate the CRM contact + deal (stage 'lead'),
+// store attribution (which ad/offer/magnet brought them in), and fire the full
+// drip via _shared/enrollment.ts: instant speed-to-lead text + email, nurture
+// sequences, and the human double-dial call cadence. The AI agent takes over
+// on the reply.
 //
 // Auth: shared secret header X-LEAD-SECRET == LEAD_INBOUND_SECRET.
 
@@ -13,9 +16,9 @@ import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
 import { toE164 } from "../_shared/quoSales.ts";
-import { OPENER, NURTURE, EMAIL_OPENER, EMAIL_NURTURE, render } from "../_shared/salesCopy.ts";
-import { openerForSource, isColdSource } from "../_shared/leadPlaybooks.ts";
-import { contactIdsByIdentity, hasRecentCadence } from "../_shared/contactIdentity.ts";
+import { enrollLeadCadence, ensureOpenDeal } from "../_shared/enrollment.ts";
+import { sanitizeAttribution, mergeAttribution } from "../_shared/attribution.ts";
+import { normalizeLeadSource } from "../_shared/leadPlaybooks.ts";
 
 type Body = {
   first_name?: string;
@@ -28,29 +31,11 @@ type Body = {
   platform?: string; // instagram / tiktok / facebook
   source?: string; // alias for platform (website forms often send "source")
   lead_magnet?: string; // readable name of the magnet they grabbed
+  attribution?: Record<string, unknown>; // which ad/utm/offer brought them (whitelisted)
 };
-
-const ACTIVE_STAGES = ["lead", "contacted", "demo-booked", "demo-done", "proposal-sent", "in-negociation"];
-const SOURCES = ["instagram", "tiktok", "facebook", "cold-call", "website", "cold-email", "inbound", "referral", "other"];
 
 const trim = (s: unknown, max = 200): string =>
   typeof s === "string" ? s.trim().slice(0, max) : "";
-
-const repName = () => Deno.env.get("SALES_AGENT_NAME") || "Robin";
-
-function leadSource(raw: string): string {
-  const p = raw.toLowerCase();
-  if (SOURCES.includes(p)) return p;
-  if (p.includes("insta") || p === "ig") return "instagram";
-  if (p.includes("tik")) return "tiktok";
-  if (p.includes("face") || p === "fb" || p.includes("meta")) return "facebook";
-  // Lead-magnet website / landing-page opt-ins get their OWN source so they're
-  // visible + measurable in the CRM (previously collapsed into "inbound").
-  if (p.includes("web") || p.includes("site") || p.includes("land") || p.includes("form")) return "website";
-  if (p.includes("cold-email") || p.includes("cold_email") || p.includes("coldemail")) return "cold-email";
-  if (p.includes("refer")) return "referral";
-  return "inbound";
-}
 
 async function findContactByPhone(e164: string): Promise<number | null> {
   const { data } = await supabaseAdmin
@@ -90,11 +75,18 @@ const handle = async (req: Request) => {
   const e164 = toE164(trim(body.phone, 40));
   const business = trim(body.business_name || body.ig_username, 120);
   const sourceRaw = trim(body.platform || body.source, 40) || "inbound";
-  const source = leadSource(sourceRaw);
-  // Cold sources (cold-call / cold-email) are worked by the outbound AUDIT play,
-  // not the warm opt-in drip, so we log them but skip the auto-cadence below.
-  const cold = isColdSource(source);
+  const source = normalizeLeadSource(sourceRaw);
   const magnet = trim(body.lead_magnet, 60);
+
+  // Attribution: whitelist whatever the caller knows (ad ids from meta_leads,
+  // utm/click ids from the website, keyword from ManyChat) and make sure the
+  // basics are always stamped even when no attribution object was sent.
+  const attribution = sanitizeAttribution(body.attribution);
+  if (magnet && !attribution.lead_magnet) attribution.lead_magnet = magnet;
+  const keyword = trim(body.keyword, 40);
+  if (keyword && !attribution.keyword) attribution.keyword = keyword;
+  if (!attribution.platform) attribution.platform = source;
+  if (!attribution.first_touch_at) attribution.first_touch_at = new Date().toISOString();
 
   // Need at least one channel to work the lead: phone (SMS funnel) or email
   // (warm email drip). Email-only opt-ins are now captured too.
@@ -107,9 +99,18 @@ const handle = async (req: Request) => {
   if (e164) contactId = await findContactByPhone(e164);
   if (!contactId && email) contactId = await findContactByEmail(email);
   if (contactId) {
+    // First-touch attribution wins: existing keys stay, new keys fill gaps.
+    const { data: existing } = await supabaseAdmin
+      .from("contacts")
+      .select("attribution")
+      .eq("id", contactId)
+      .maybeSingle();
     await supabaseAdmin
       .from("contacts")
-      .update({ last_seen: new Date().toISOString() })
+      .update({
+        last_seen: new Date().toISOString(),
+        attribution: mergeAttribution(existing?.attribution, attribution),
+      })
       .eq("id", contactId);
   } else {
     const ins = await supabaseAdmin
@@ -120,7 +121,8 @@ const handle = async (req: Request) => {
         email_jsonb: email ? [{ email, type: "Work" }] : null,
         phone_jsonb: e164 ? [{ number: e164, type: "Mobile" }] : null,
         lead_source: source,
-        background: `Opted in via ${sourceRaw}${magnet ? ` for ${magnet}` : ""}${body.keyword ? ` (keyword: ${trim(body.keyword, 40)})` : ""}.`,
+        background: `Opted in via ${sourceRaw}${magnet ? ` for ${magnet}` : ""}${keyword ? ` (keyword: ${keyword})` : ""}.`,
+        attribution,
         first_seen: new Date().toISOString(),
         last_seen: new Date().toISOString(),
       })
@@ -147,114 +149,28 @@ const handle = async (req: Request) => {
   }
 
   // Find or create an open deal at stage 'lead'.
-  let dealId: number | null = null;
-  const { data: openDeal } = await supabaseAdmin
-    .from("deals")
-    .select("id")
-    .contains("contact_ids", [contactId])
-    .in("stage", ACTIVE_STAGES)
-    .limit(1);
-  if (openDeal && openDeal[0]) {
-    dealId = openDeal[0].id;
-  } else {
-    const d = await supabaseAdmin
-      .from("deals")
-      .insert({
-        name: business || `${first_name} ${last_name}`.trim() || e164 || email,
-        stage: "lead",
-        category: source,
-        contact_ids: [contactId],
-        company_id: companyId,
-      })
-      .select("id")
-      .single();
-    if (d.error) {
-      console.error("[lead_inbound] deal insert failed", d.error);
-      return createErrorResponse(500, "Failed to create deal");
-    }
-    dealId = d.data.id;
-  }
+  const dealId = await ensureOpenDeal({
+    contactId: contactId as number,
+    name: business || `${first_name} ${last_name}`.trim() || e164 || email,
+    source,
+    companyId,
+  });
+  if (dealId === null) return createErrorResponse(500, "Failed to create deal");
 
-  // Enqueue speed-to-lead + nurture, but ONLY if this PERSON has no cadence
-  // already. Checked by IDENTITY (every contact sharing this phone/email), not
-  // just this contact_id — so a duplicate contact can never double-text them,
-  // no matter how the duplicate got created.
-  const identityIds = await contactIdsByIdentity(e164, email);
-  if (contactId && !identityIds.includes(contactId)) identityIds.push(contactId);
-  const cadenceExists = await hasRecentCadence(identityIds);
-  if (cadenceExists) {
-    console.info("[lead_inbound] cadence already active for this identity — skipping enqueue", { contactId });
-  }
-
-  // Abuse cap: if a flood of tasks appeared in the last hour (e.g. someone
-  // hammering the public form), record the lead but stop auto-texting so the
-  // number can't be used to mass-blast SMS.
-  const { count: recentTasks } = await supabaseAdmin
-    .from("scheduled_tasks")
-    .select("*", { count: "exact", head: true })
-    .gte("created_at", new Date(Date.now() - 3600_000).toISOString());
-  const flooded = (recentTasks ?? 0) > 60;
-  if (flooded) console.warn("[lead_inbound] flood cap hit — skipping auto-text", { recentTasks });
-
-  // We enqueue the cadence even while sends are paused: dispatch_tasks HOLDS the
-  // queue during a pause (it no longer cancels), so tasks just wait and flush
-  // when sends resume. This guarantees no lead is ever logged without a cadence.
-
-  let enqueued = 0;
-  if (!flooded && !cold && !cadenceExists) {
-    // {{first_name}} stays for send time; {{lead_magnet}} names what they grabbed.
-    const vars = { rep_name: repName(), lead_magnet: magnet || "your free templates" };
-    const now = Date.now();
-    const rows: Record<string, unknown>[] = [];
-    // SMS cadence — only when we have a phone. Opener voice is picked by source
-    // (see leadPlaybooks.ts) so social/website/referral each open differently.
-    if (e164) {
-      rows.push({
-        task_type: "speed_to_lead_sms",
-        contact_id: contactId,
-        deal_id: dealId,
-        payload: { content: render(openerForSource(source) ?? OPENER, vars), key: "opener" },
-        run_at: new Date(now).toISOString(),
-      });
-      for (const s of NURTURE) {
-        rows.push({
-          task_type: "nurture_sms",
-          contact_id: contactId,
-          deal_id: dealId,
-          payload: { content: render(s.template, vars), key: s.key },
-          run_at: new Date(now + s.offsetMinutes * 60_000).toISOString(),
-        });
-      }
-    }
-    // WARM email drip — whenever we have an email (runs alongside SMS, or alone
-    // for email-only opt-ins). Sent from the closer's Gmail by dispatch_tasks.
-    if (email) {
-      rows.push({
-        task_type: "speed_to_lead_email",
-        contact_id: contactId,
-        deal_id: dealId,
-        payload: { subject: EMAIL_OPENER.subject, content: render(EMAIL_OPENER.body, vars), key: EMAIL_OPENER.key },
-        run_at: new Date(now + EMAIL_OPENER.offsetMinutes * 60_000).toISOString(),
-      });
-      for (const s of EMAIL_NURTURE) {
-        rows.push({
-          task_type: "nurture_email",
-          contact_id: contactId,
-          deal_id: dealId,
-          payload: { subject: s.subject, content: render(s.body, vars), key: s.key },
-          run_at: new Date(now + s.offsetMinutes * 60_000).toISOString(),
-        });
-      }
-    }
-    if (rows.length) {
-      const r = await supabaseAdmin.from("scheduled_tasks").insert(rows);
-      if (r.error) console.error("[lead_inbound] enqueue failed", r.error);
-      else enqueued = rows.length;
-    }
-  }
+  // Full drip: speed-to-lead SMS/email + nurture + double-dial call cadence.
+  // All dedupe (identity-wide), the flood cap, and the cold-source skip live in
+  // enrollLeadCadence, shared with the enroll_orphans sweep.
+  const result = await enrollLeadCadence({
+    contactId: contactId as number,
+    dealId,
+    source,
+    magnet,
+    e164,
+    email,
+  });
 
   return new Response(
-    JSON.stringify({ ok: true, contact_id: contactId, deal_id: dealId, enqueued }),
+    JSON.stringify({ ok: true, contact_id: contactId, deal_id: dealId, enqueued: result.enqueued }),
     { headers: { "Content-Type": "application/json", ...corsHeaders } },
   );
 };
