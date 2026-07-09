@@ -16,9 +16,11 @@ interface Body {
   last_name?: string;
   email?: string;
   phone?: string;
+  business_name?: string;
   lead_magnet?: string;
   source?: string;
   keyword?: string;
+  attribution?: Record<string, unknown>; // utm/fbclid/ttclid/referrer first-touch from the browser
   website?: string; // honeypot — bots fill it, humans never see it
 }
 
@@ -58,9 +60,13 @@ const handle = async (req: Request) => {
         last_name: body.last_name,
         email: body.email,
         phone: body.phone,
+        business_name: body.business_name,
         lead_magnet: body.lead_magnet,
         source: body.source || "website",
         keyword: body.keyword,
+        // Whitelisted downstream (lead_inbound sanitizeAttribution) — safe to
+        // pass through from the browser.
+        attribution: body.attribution,
       }),
     });
     const out = await res.json().catch(() => ({}));

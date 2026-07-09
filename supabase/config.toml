@@ -226,3 +226,9 @@ verify_jwt = false
 verify_jwt = false
 [functions.instantly_inbound]
 verify_jwt = false
+[functions.enroll_orphans]
+verify_jwt = false
+[functions.meta_leads]
+verify_jwt = false
+[functions.quo_call_events]
+verify_jwt = false

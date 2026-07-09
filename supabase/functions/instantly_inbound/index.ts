@@ -130,6 +130,8 @@ const handle = async (req: Request) => {
         email_jsonb: [{ email, type: "Work" }],
         lead_source: "cold-email",
         background: `Replied to Robin Line cold email${campaign ? ` (campaign: ${campaign})` : ""}.`,
+        // Keep the campaign queryable, not just prose (see _shared/attribution.ts).
+        attribution: campaign ? { campaign_name: campaign, platform: "cold-email", first_touch_at: nowIso } : {},
         first_seen: nowIso,
         last_seen: nowIso,
       })

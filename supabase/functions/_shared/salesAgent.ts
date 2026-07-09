@@ -48,6 +48,7 @@ interface ContactRow {
   phone_jsonb: unknown;
   lead_source: string | null;
   company_id: number | null;
+  attribution?: Record<string, unknown> | null;
 }
 
 interface DealRow {
@@ -99,20 +100,69 @@ async function loadHistory(
   }));
 }
 
+// One short line about the lead's most recent phone call (persisted by
+// quo_call_events), so the SMS agent can carry a phone objection into text
+// instead of re-asking. Best-effort - null when there's no call history.
+async function lastCallSnippet(contactId: number): Promise<string | null> {
+  try {
+    const { data } = await supabaseAdmin
+      .from("call_logs")
+      .select("summary, transcript, direction, duration, created_at")
+      .eq("contact_id", contactId)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    const call = data?.[0];
+    if (!call) return null;
+    let gist = typeof call.summary === "string" && call.summary.trim() ? call.summary.trim() : "";
+    if (!gist && call.transcript && typeof call.transcript === "object") {
+      const dialogue = (call.transcript as Record<string, unknown>).dialogue;
+      if (Array.isArray(dialogue)) {
+        gist = dialogue
+          .map((d) => (d && typeof d === "object" ? String((d as Record<string, unknown>).content ?? "") : ""))
+          .filter(Boolean)
+          .join(" / ")
+          .slice(0, 240);
+      }
+    }
+    if (!gist) return null;
+    const when = call.created_at ? new Date(call.created_at as string).toUTCString() : "recently";
+    return `${call.direction ?? "phone"} call ${when}${call.duration ? ` (${call.duration}s)` : ""}: ${gist}`;
+  } catch (e) {
+    console.error("[salesAgent] lastCallSnippet failed", e);
+    return null;
+  }
+}
+
+// Compact "which ad/offer/magnet brought them in" line for the prompt.
+function attributionLine(attr: Record<string, unknown> | null | undefined): string | null {
+  if (!attr || typeof attr !== "object") return null;
+  const s = (k: string) => (typeof attr[k] === "string" && (attr[k] as string).trim() ? (attr[k] as string).trim() : "");
+  const bits: string[] = [];
+  if (s("ad_name")) bits.push(`saw the ${s("platform") || "social"} ad "${s("ad_name")}"`);
+  else if (s("utm_campaign")) bits.push(`came via campaign "${s("utm_campaign")}"`);
+  if (s("lead_magnet")) bits.push(`grabbed ${s("lead_magnet")}`);
+  if (s("offer")) bits.push(`was offered ${s("offer")}`);
+  return bits.length ? bits.join(", ") : null;
+}
+
 function systemPrompt(
   contact: ContactRow,
   deal: DealRow | null,
   companyName: string | null,
   tz: string,
   nowLine: string,
+  lastCall: string | null = null,
 ): string {
+  const origin = attributionLine(contact.attribution);
   const known = [
     contact.first_name ? `name=${contact.first_name}` : "",
     companyName ? `company=${companyName}` : "",
     contact.lead_source ? `source=${contact.lead_source}` : "",
+    origin ? `origin: ${origin}` : "",
     deal ? `stage=${deal.stage}` : "",
     deal?.owner_type ? `owner_type=${deal.owner_type}` : "",
     deal?.pain_point ? `pain=${deal.pain_point}` : "",
+    lastCall ? `last phone call: ${lastCall}` : "",
   ]
     .filter(Boolean)
     .join(", ");
@@ -497,7 +547,7 @@ export async function runSalesAgentTurn(contactId: number): Promise<string | nul
 
   const { data: contact } = await supabaseAdmin
     .from("contacts")
-    .select("id, first_name, last_name, phone_jsonb, lead_source, company_id")
+    .select("id, first_name, last_name, phone_jsonb, lead_source, company_id, attribution")
     .eq("id", contactId)
     .maybeSingle();
   if (!contact) return null;
@@ -537,7 +587,8 @@ export async function runSalesAgentTurn(contactId: number): Promise<string | nul
   } catch {
     nowLine = new Date().toUTCString();
   }
-  const system = systemPrompt(contact as ContactRow, deal, companyName, tz, nowLine);
+  const lastCall = await lastCallSnippet(contactId);
+  const system = systemPrompt(contact as ContactRow, deal, companyName, tz, nowLine, lastCall);
 
   let replyText = "";
   for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {

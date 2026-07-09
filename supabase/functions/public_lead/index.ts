@@ -1,11 +1,15 @@
 // Public lead capture — anyone can POST a contact form submission.
 // Creates a contact with sales_id = NULL via the service role (bypasses RLS).
-// Admins see unassigned contacts and can route them to reps.
+// Admins see unassigned contacts and can route them to reps. Since the
+// voice-memo build, quote requests also get a deal + the full drip (they used
+// to sit as bare contacts with no follow-up at all).
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
+import { toE164 } from "../_shared/quoSales.ts";
+import { enrollLeadCadence, ensureOpenDeal } from "../_shared/enrollment.ts";
 
 type RequestBody = {
   first_name?: string;
@@ -88,14 +92,22 @@ const handleSubmit = async (req: Request) => {
     .filter(Boolean)
     .join("\n");
 
+  const e164 = toE164(phone);
   const { data, error } = await supabaseAdmin
     .from("contacts")
     .insert({
       first_name,
       last_name,
       email_jsonb: [{ email, type: "Work" }],
-      phone_jsonb: phone ? [{ number: phone, type: "Work" }] : null,
+      phone_jsonb: e164 ? [{ number: e164, type: "Work" }] : null,
+      lead_source: "website",
       background,
+      attribution: {
+        platform: "website",
+        lead_magnet: "quote request",
+        ...(service_interest ? { keyword: service_interest } : {}),
+        first_touch_at: new Date().toISOString(),
+      },
       first_seen: new Date().toISOString(),
       last_seen: new Date().toISOString(),
       sales_id: referredSalesId,
@@ -108,7 +120,24 @@ const handleSubmit = async (req: Request) => {
     return createErrorResponse(500, "Failed to record lead");
   }
 
-  return new Response(JSON.stringify({ ok: true, id: data?.id }), {
+  // Quote requests are the hottest leads this form sees — put them on the
+  // kanban and the full drip (identity dedupe + flood cap live in enrollment).
+  const contactId = data?.id as number;
+  const dealId = await ensureOpenDeal({
+    contactId,
+    name: `${first_name} ${last_name}`.trim() || email,
+    source: "website",
+  });
+  const enrolled = await enrollLeadCadence({
+    contactId,
+    dealId,
+    source: "website",
+    magnet: "quote request",
+    e164: e164 || null,
+    email,
+  });
+
+  return new Response(JSON.stringify({ ok: true, id: contactId, enqueued: enrolled.enqueued }), {
     headers: { "Content-Type": "application/json", ...corsHeaders },
   });
 };
