@@ -20,6 +20,7 @@ import { getTranslatedCompanySizeLabel } from "./getTranslatedCompanySizeLabel";
 import { sizes } from "./sizes";
 import { useGetSalesName } from "../sales/useGetSalesName";
 import { SendTextButton } from "../contacts/SendTextButton";
+import { LeadContextCard } from "../contacts/LeadContextCard";
 import { toE164 } from "../misc/phone";
 
 interface CompanyAsideProps {
@@ -49,6 +50,8 @@ export const CompanyAside = ({ link = "edit" }: CompanyAsideProps) => {
           className="w-full"
         />
       ) : null}
+
+      <LeadContextCard companyId={record.id as number} />
 
       <CompanyInfo record={record} />
 

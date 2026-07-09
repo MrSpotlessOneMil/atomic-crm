@@ -125,6 +125,18 @@ export const LogCallButton = ({ className }: { className?: string }) => {
       });
       if (nErr) throw nErr;
 
+      // One real call satisfies every stacked double-dial item for this lead:
+      // close all open call tasks (the next cadence step still fires on its own
+      // day). Best-effort — never blocks logging the call.
+      sb.from("tasks")
+        .update({ done_date: new Date().toISOString() })
+        .eq("contact_id", contactId)
+        .eq("type", "call")
+        .is("done_date", null)
+        .then(({ error }) => {
+          if (error) console.error("call task close failed", error);
+        });
+
       // Claim the lead for whoever worked it (if unclaimed) so the card shows
       // who's on it.
       if (!record.sales_id && identity?.id) {

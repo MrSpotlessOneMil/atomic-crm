@@ -2,6 +2,7 @@ import { useGetList } from "ra-core";
 
 import { OsirisAssistantWidget } from "../assistant/OsirisAssistantWidget";
 import type { Contact, ContactNote } from "../types";
+import { CallQueueWidget } from "./CallQueueWidget";
 import { DashboardActivityLog } from "./DashboardActivityLog";
 import { DashboardStepper } from "./DashboardStepper";
 import { DealsChart } from "./DealsChart";
@@ -53,6 +54,7 @@ export const Dashboard = () => {
   return (
     <div className="flex flex-col gap-6 mt-1">
       <DailyTasks />
+      <CallQueueWidget />
       <FollowUpsWidget />
       {body}
     </div>

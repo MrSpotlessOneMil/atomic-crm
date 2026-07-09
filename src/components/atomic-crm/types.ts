@@ -215,7 +215,9 @@ export type NotificationType =
   | "lead_assigned"
   | "payout_approved"
   | "payout_paid"
-  | "booking_created";
+  | "booking_created"
+  | "agent_handoff"
+  | "call_due";
 
 export type Notification = {
   sales_id: Identifier;

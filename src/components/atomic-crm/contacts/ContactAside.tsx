@@ -12,6 +12,7 @@ import { TagsListEdit } from "./TagsListEdit";
 import { ContactStatusSelector } from "./ContactInputs";
 import { ContactPersonalInfo } from "./ContactPersonalInfo";
 import { ContactBackgroundInfo } from "./ContactBackgroundInfo";
+import { LeadContextCard } from "./LeadContextCard";
 import { AsideSection } from "../misc/AsideSection";
 import type { Contact, ContactNote } from "../types";
 import { ContactMergeButton } from "./ContactMergeButton";
@@ -45,6 +46,10 @@ export const ContactAside = ({ link = "edit" }: { link?: "edit" | "show" }) => {
       <AsideSection title={translate("resources.notes.fields.status")}>
         <ContactStatusSelector />
       </AsideSection>
+
+      <div className="mb-4">
+        <LeadContextCard contactId={record.id as number} />
+      </div>
 
       <AsideSection
         title={translate("resources.contacts.field_categories.personal_info")}

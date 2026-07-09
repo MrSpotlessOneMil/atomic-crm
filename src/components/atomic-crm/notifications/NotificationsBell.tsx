@@ -46,6 +46,16 @@ const describe = (n: Notification): { text: string; to: string } => {
         text: "A payout was marked paid",
         to: "/payouts",
       };
+    case "call_due":
+      return {
+        text: `Call now: double dial${p.step ? ` ${String(p.step)}` : ""} due${p.phone ? ` — ${String(p.phone)}` : ""}`,
+        to: `/contacts/${String(p.contact_id ?? "")}/show`,
+      };
+    case "agent_handoff":
+      return {
+        text: `Lead handed to you: ${String(p.summary ?? p.reason ?? "check the deal")}`,
+        to: `/contacts/${String(p.contact_id ?? "")}/show`,
+      };
     default:
       return { text: "Notification", to: "/" };
   }
