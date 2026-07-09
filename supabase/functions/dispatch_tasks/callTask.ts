@@ -36,7 +36,7 @@ export function callTaskText(opts: {
 }): string {
   const step = Number(opts.step) || 1;
   const of = Number(opts.of) || step;
-  let text = `Double dial ${step}/${of} - call twice back-to-back - ${opts.phone}`;
+  let text = `Double dial ${step}/${of} - call twice back-to-back, no answer = voicemail + text - ${opts.phone}`;
   if (typeof opts.source === "string" && opts.source) text += ` - via ${opts.source}`;
   if (typeof opts.leadMagnet === "string" && opts.leadMagnet) text += ` (${opts.leadMagnet})`;
   return text;

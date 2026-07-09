@@ -5,9 +5,14 @@
 // time; dispatch_tasks bridges each due step into the human `tasks` table
 // (type 'call') + a 'call_due' notification, so reps see a CALL NOW queue.
 //
-// Cadence source: the 2026-07-08 voice memo (Hormozi-style speed-to-lead) -
-// two double dials the first day, then one on the 2nd / 3rd / 5th / 10th day.
-// Tune the list below when the exact Hormozi doc lands; everything else adapts.
+// Cadence source: Hormozi's $100M Playbook "Lead Nurture", Pillar IV: Volume
+// (scheduling appointments, steps 1-8): call within 5 minutes of opt-in
+// (double-dial; no answer -> voicemail + text right after), two more
+// double-dial+text attempts the same day a few hours apart, two calls a day
+// (early + late) for the next two days, one call+text a day for the next four
+// days, then hand over to long-term nurture after the first week (our email
+// drip runs to day 30). Front-load the reach-outs - the more days pass, the
+// less likely they schedule. Steps 6-7 are flexible by design; tune here.
 //
 // This module is PURE (no supabase / Deno imports) so vitest can run it in node.
 
@@ -17,12 +22,17 @@ export interface CallStep {
 }
 
 export const CALL_CADENCE: CallStep[] = [
-  { day: 0, hour: null }, // speed-to-lead: call the moment the lead lands
-  { day: 0, hour: 16 }, // second push the same afternoon
+  { day: 0, hour: null }, // speed-to-lead: call within minutes of the lead landing
+  { day: 0, hour: 13 }, // second push a few hours later
+  { day: 0, hour: 17 }, // third push to close out day one
   { day: 1, hour: 10 },
+  { day: 1, hour: 16 },
+  { day: 2, hour: 10 },
   { day: 2, hour: 16 },
+  { day: 3, hour: 10 },
   { day: 4, hour: 10 },
-  { day: 9, hour: 10 },
+  { day: 5, hour: 10 },
+  { day: 6, hour: 10 },
 ];
 
 export const DEFAULT_CALL_TZ = "America/New_York";

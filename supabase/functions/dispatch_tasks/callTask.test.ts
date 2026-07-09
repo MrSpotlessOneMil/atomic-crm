@@ -112,8 +112,10 @@ beforeEach(() => {
 describe("callTaskText", () => {
   it("describes the double dial with step, phone, source and magnet", () => {
     expect(
-      callTaskText({ step: 2, of: 6, phone: "+13105550000", source: "facebook", leadMagnet: "Playbook" }),
-    ).toBe("Double dial 2/6 - call twice back-to-back - +13105550000 - via facebook (Playbook)");
+      callTaskText({ step: 2, of: 11, phone: "+13105550000", source: "facebook", leadMagnet: "Playbook" }),
+    ).toBe(
+      "Double dial 2/11 - call twice back-to-back, no answer = voicemail + text - +13105550000 - via facebook (Playbook)",
+    );
   });
 });
 

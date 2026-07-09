@@ -121,7 +121,7 @@ export const CallQueueWidget = () => {
         <PhoneCall className="w-5 h-5 text-red-500" />
         <h2 className="text-base font-semibold">Call now ({items.length})</h2>
         <span className="text-xs text-muted-foreground">
-          double dial: call twice back-to-back
+          double dial: call twice back-to-back · no answer? voicemail + text
         </span>
       </div>
       <div className="flex flex-col divide-y">
