@@ -33,6 +33,8 @@ alter table public.bookings enable row level security;
 alter table public.scheduled_tasks enable row level security;
 alter table public.sms_suppressions enable row level security;
 alter table public.agent_messages enable row level security;
+-- call_logs: reps read team-wide (policy below); writes stay service-role only.
+alter table public.call_logs enable row level security;
 
 -- Companies
 create policy "Companies select for owner or admin" on public.companies
@@ -184,11 +186,13 @@ create policy "Deal notes delete for owner or admin" on public.deal_notes
     or sales_id = (select id from public.sales where user_id = auth.uid())
   );
 
--- Tasks
+-- Tasks. sales_id-null rows are the shared pool (e.g. call tasks for
+-- unassigned leads) - visible to every rep so anyone can claim them.
 create policy "Tasks select for owner or admin" on public.tasks
   for select to authenticated
   using (
     public.is_admin()
+    or sales_id is null
     or sales_id = (select id from public.sales where user_id = auth.uid())
   );
 create policy "Tasks insert for owner or admin" on public.tasks
@@ -202,10 +206,12 @@ create policy "Tasks update for owner or admin" on public.tasks
   for update to authenticated
   using (
     public.is_admin()
+    or sales_id is null
     or sales_id = (select id from public.sales where user_id = auth.uid())
   )
   with check (
     public.is_admin()
+    or sales_id is null
     or sales_id = (select id from public.sales where user_id = auth.uid())
   );
 create policy "Tasks delete for owner or admin" on public.tasks
@@ -214,6 +220,11 @@ create policy "Tasks delete for owner or admin" on public.tasks
     public.is_admin()
     or sales_id = (select id from public.sales where user_id = auth.uid())
   );
+
+-- Call logs (persisted OpenPhone calls): team-wide read, service-role write.
+create policy "Call logs select for authenticated" on public.call_logs
+  for select to authenticated
+  using (true);
 
 -- Sales (readable to all so the leaderboard / reference inputs work)
 create policy "Enable read access for authenticated users" on public.sales for select to authenticated using (true);
