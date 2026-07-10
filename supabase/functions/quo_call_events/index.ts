@@ -8,15 +8,27 @@
 // the PERMANENT record: it grounds the SMS agent's prompt (lastCallSnippet),
 // feeds the LeadContextCard, and survives OpenPhone retention windows.
 //
-// Auth: OpenPhone HMAC signature (openphone-signature header), key
-// SALES_QUO_CALLS_WEBHOOK_SECRET. Same scheme as quo_inbound: OpenPhone signs
-// `${timestamp}.${rawBody}` with the BASE64-DECODED webhook key.
+// Auth: OpenPhone HMAC signature (openphone-signature header). Same scheme as
+// quo_inbound: OpenPhone signs `${timestamp}.${rawBody}` with the
+// BASE64-DECODED webhook key. The key(s) live in integration_secrets under
+// SALES_QUO_CALLS_WEBHOOK_SECRET — comma-separated, because OpenPhone issues
+// one signing key per webhook and calls + transcripts are separate webhooks.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
 import { toE164, getQuoKey } from "../_shared/quoSales.ts";
+
+async function getWebhookKeys(): Promise<string[]> {
+  const { data } = await supabaseAdmin
+    .from("integration_secrets")
+    .select("value")
+    .eq("key", "SALES_QUO_CALLS_WEBHOOK_SECRET")
+    .maybeSingle();
+  const raw = (data?.value ?? "") as string;
+  return raw.split(",").map((s) => s.trim()).filter(Boolean);
+}
 
 function b64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
@@ -122,13 +134,19 @@ function fmtDuration(seconds: unknown): string {
 const handle = async (req: Request) => {
   if (req.method !== "POST") return createErrorResponse(405, "Method Not Allowed");
 
-  const secret = Deno.env.get("SALES_QUO_CALLS_WEBHOOK_SECRET");
-  if (!secret) return createErrorResponse(503, "Call events webhook not configured");
+  const secrets = await getWebhookKeys();
+  if (!secrets.length) return createErrorResponse(503, "Call events webhook not configured");
 
   const raw = await req.text();
-  if (!(await verifySignature(raw, req.headers.get("openphone-signature"), secret))) {
-    return createErrorResponse(401, "Bad signature");
+  const header = req.headers.get("openphone-signature");
+  let verified = false;
+  for (const secret of secrets) {
+    if (await verifySignature(raw, header, secret)) {
+      verified = true;
+      break;
+    }
   }
+  if (!verified) return createErrorResponse(401, "Bad signature");
 
   let evt: any;
   try {
