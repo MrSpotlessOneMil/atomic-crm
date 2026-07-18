@@ -190,3 +190,11 @@ Import `test-data/contacts.csv` via the Contacts page → Import button.
 - Unit tests can be added in the `src/` directory (test files are named `*.test.ts` or `*.test.tsx`)
 - User deletion is not supported to avoid data loss; use account disabling instead
 - Filter operators must be supported by the `supabaseAdapter` when using FakeRest
+
+## Hard rule: primary source before ANY prospect-facing message
+
+Before drafting or sending any outbound message to a prospect (SMS via the SDR agent, email, call script) — pull the contact's FULL conversation and activity history from the database first and read all of it. Never draft from memory, summaries, or the current chat alone.
+
+The message must never: ask for anything the history already answered, re-offer something already done, contradict a prior promise, or state facts not in the record. If a requested message conflicts with the history, flag it before sending — even when told "just send it." "Aggressive" positioning never means insulting the prospect or their current vendor.
+
+Origin: 2026-07-18 — a hot lead was lost when a draft re-asked for info she had already provided. This rule is system-wide across all of Dominic's projects.
