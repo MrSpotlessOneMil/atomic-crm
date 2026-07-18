@@ -16,6 +16,10 @@ import { sendSalesSms, toE164, salesSendsPaused } from "../_shared/quoSales.ts";
 import { NO_SHOW } from "../_shared/salesCopy.ts";
 import { sendLeadEmail } from "../_shared/leadEmail.ts";
 import { hasBookedDemo } from "../_shared/bookingGuard.ts";
+import {
+  CHASE_TASK_TYPES,
+  identityContactIds,
+} from "../_shared/haltFollowup.ts";
 import { handleCallTask } from "./callTask.ts";
 import {
   MAX_ATTEMPTS,
@@ -23,31 +27,26 @@ import {
   type TaskRow,
   firstPhone,
   isQuietHours,
+  quietHoursDeferMs,
   setStatus,
 } from "./taskUtil.ts";
 
 const EMAIL_TASK_TYPES = ["speed_to_lead_email", "nurture_email"];
 
 // Top-of-funnel "chase" messages. Once a lead has booked a demo (even on a
-// duplicate contact), these are suppressed — see hasBookedDemo. Reminders
-// (reminder_sms) and no_show_check are intentionally NOT here: a booked lead
-// still needs those.
-const CHASE_TASK_TYPES = [
-  "speed_to_lead_sms",
-  "nurture_sms",
-  "sdr_call_drip_sms",
-  "agent_followup",
-  "speed_to_lead_email",
-  "nurture_email",
-  "call_task",
-];
+// duplicate contact) or responded on ANY channel, these are suppressed — see
+// hasBookedDemo + repliedSinceEnrollment. Reminders (reminder_sms) and
+// no_show_check are intentionally NOT chase: a booked lead still needs those.
+// The list itself lives in _shared/haltFollowup.ts so the reply-cancel and this
+// send-time guard can never drift apart.
 
 // Safe {{first_name}} for greetings. Cold lists often dump the BUSINESS name
 // into first_name ("The Cleaning Authority", "The Maids in Scottsdale"), which
 // naively became "Hi The,". So: fall back to "there" when the name is empty, a
 // leading article, 3+ words, or contains an obvious business word. Only a clean
 // single personal name is used verbatim.
-const BIZ_WORDS = /\b(cleaning|clean|services?|company|co|llc|inc|maids?|janitorial|solutions?|group|enterprises?|cleaners?)\b/i;
+const BIZ_WORDS =
+  /\b(cleaning|clean|services?|company|co|llc|inc|maids?|janitorial|solutions?|group|enterprises?|cleaners?)\b/i;
 function greetingName(raw: string | null | undefined): string {
   const full = (raw ?? "").trim();
   if (!full) return "there";
@@ -60,7 +59,8 @@ function greetingName(raw: string | null | undefined): string {
 }
 
 const BATCH = 25;
-const DEFAULT_CALENDLY = "https://calendly.com/dominic-theosirisai/cleaning-gameplan";
+const DEFAULT_CALENDLY =
+  "https://calendly.com/dominic-theosirisai/cleaning-gameplan";
 
 // TaskRow / Outcome / firstPhone / isQuietHours / setStatus live in
 // ./taskUtil.ts so callTask.ts and the vitest suites share one copy.
@@ -117,7 +117,10 @@ async function handleNoShowCheck(task: TaskRow): Promise<Outcome> {
   if (!phone) {
     // No number -> can never text. Cancel (not fail): stops the error noise and
     // never retries. Prevention is upstream (calendly_webhook hasPhone guard).
-    await setStatus(task.id, { status: "canceled", last_error: "no phone (canceled)" });
+    await setStatus(task.id, {
+      status: "canceled",
+      last_error: "no phone (canceled)",
+    });
     return "skipped";
   }
   const { data: sup } = await supabaseAdmin
@@ -131,16 +134,29 @@ async function handleNoShowCheck(task: TaskRow): Promise<Outcome> {
   }
 
   const content = render(NO_SHOW, {
-    first_name: (contact?.first_name ?? "").split(" ")[0] || "there",
+    first_name: greetingName(contact?.first_name),
     calendly_link: await getCalendlyUrl(),
   });
-  const res = await sendSalesSms(phone, content, { contactId: task.contact_id });
+  const res = await sendSalesSms(phone, content, {
+    contactId: task.contact_id,
+  });
   if (!res.ok) {
-    await setStatus(task.id, { status: "failed", last_error: JSON.stringify(res.body).slice(0, 500) });
+    await setStatus(task.id, {
+      status: "failed",
+      last_error: JSON.stringify(res.body).slice(0, 500),
+    });
     return "failed";
   }
-  await supabaseAdmin.from("deals").update({ stage: "contacted", updated_at: new Date().toISOString() }).eq("id", deal.id);
-  await supabaseAdmin.from("agent_messages").insert({ contact_id: task.contact_id, deal_id: deal.id, direction: "outbound", body: content });
+  await supabaseAdmin
+    .from("deals")
+    .update({ stage: "contacted", updated_at: new Date().toISOString() })
+    .eq("id", deal.id);
+  await supabaseAdmin.from("agent_messages").insert({
+    contact_id: task.contact_id,
+    deal_id: deal.id,
+    direction: "outbound",
+    body: content,
+  });
   try {
     await supabaseAdmin.from("contact_notes").insert({
       contact_id: task.contact_id,
@@ -148,7 +164,9 @@ async function handleNoShowCheck(task: TaskRow): Promise<Outcome> {
       date: new Date().toISOString(),
       status: "warm",
     });
-  } catch (_e) { /* visibility only */ }
+  } catch (_e) {
+    /* visibility only */
+  }
   await setStatus(task.id, { status: "sent" });
   return "sent";
 }
@@ -167,45 +185,130 @@ async function handleEmailTask(task: TaskRow): Promise<Outcome> {
     .eq("id", task.contact_id)
     .maybeSingle();
   // pull first email from contacts.email_jsonb ([{email,type}] or strings)
-  let email: string | null = (typeof payload.to === "string" && payload.to.includes("@")) ? payload.to : null;
+  let email: string | null =
+    typeof payload.to === "string" && payload.to.includes("@")
+      ? payload.to
+      : null;
   const ej = contact?.email_jsonb;
   if (!email && Array.isArray(ej)) {
     for (const e of ej) {
-      if (typeof e === "string" && e.includes("@")) { email = e; break; }
+      if (typeof e === "string" && e.includes("@")) {
+        email = e;
+        break;
+      }
       if (e && typeof e === "object") {
         const v = (e as Record<string, unknown>).email;
-        if (typeof v === "string" && v.includes("@")) { email = v; break; }
+        if (typeof v === "string" && v.includes("@")) {
+          email = v;
+          break;
+        }
       }
     }
   }
   if (!email) {
-    await setStatus(task.id, { status: "failed", last_error: "no email for task" });
+    await setStatus(task.id, {
+      status: "failed",
+      last_error: "no email for task",
+    });
     return "failed";
   }
-  const vars = { first_name: (contact?.first_name ?? "").split(" ")[0] || "there" };
-  const subject = render(String(payload.subject ?? ""), vars);
+  // Email opt-out suppression (STOP by text, "reply stop" by email, manual).
+  const { data: esup } = await supabaseAdmin
+    .from("email_suppressions")
+    .select("id")
+    .eq("email", email.trim().toLowerCase())
+    .maybeSingle();
+  if (esup) {
+    await setStatus(task.id, {
+      status: "canceled",
+      last_error: "suppressed (email opt-out)",
+    });
+    return "skipped";
+  }
+  const vars = {
+    first_name: greetingName(contact?.first_name),
+  };
+  let subject = render(String(payload.subject ?? ""), vars);
   const body = render(String(payload.content ?? ""), vars);
   if (!subject.trim() || !body.trim()) {
-    await setStatus(task.id, { status: "failed", last_error: "empty email content" });
+    await setStatus(task.id, {
+      status: "failed",
+      last_error: "empty email content",
+    });
     return "failed";
   }
+
+  // Threading. The opener stamps its own Message-ID (so no Gmail read scope is
+  // ever needed); a step with payload.thread_with looks the opener's send back
+  // up and replies INSIDE that thread. Opener missing/unsent -> send standalone.
+  let messageIdHeader: string | undefined;
+  let inReplyTo: string | undefined;
+  let threadId: string | undefined;
+  const threadWith =
+    typeof payload.thread_with === "string" ? payload.thread_with : null;
+  if (threadWith) {
+    const { data: prior } = await supabaseAdmin
+      .from("scheduled_tasks")
+      .select("payload")
+      .eq("contact_id", task.contact_id)
+      .eq("status", "sent")
+      .in("task_type", EMAIL_TASK_TYPES)
+      .eq("payload->>key", threadWith)
+      .order("id", { ascending: false })
+      .limit(1);
+    const pp = (prior?.[0]?.payload ?? {}) as Record<string, unknown>;
+    if (typeof pp.message_id_header === "string")
+      inReplyTo = pp.message_id_header;
+    if (typeof pp.gmail_thread_id === "string") threadId = pp.gmail_thread_id;
+    if (typeof pp.sent_subject === "string" && pp.sent_subject.trim()) {
+      subject = `Re: ${String(pp.sent_subject).replace(/^re:\s*/i, "")}`;
+    } else if (!inReplyTo && !threadId) {
+      // Opener never sent (skipped/canceled) -> going out standalone; a fake
+      // "Re:" on a first-contact email reads as a spam trick.
+      subject = subject.replace(/^re:\s*/i, "");
+    }
+  } else {
+    messageIdHeader = `<rl-${task.contact_id}-${crypto.randomUUID()}@robinline.crm>`;
+  }
+
   const res = await sendLeadEmail({
-    to: email, subject, body, contactId: task.contact_id, dealId: task.deal_id, taskType: task.task_type,
+    to: email,
+    subject,
+    body,
+    contactId: task.contact_id,
+    dealId: task.deal_id,
+    taskType: task.task_type,
+    messageIdHeader,
+    inReplyTo,
+    threadId,
   });
   if (res.ok) {
-    await setStatus(task.id, { status: "sent" });
+    // Persist thread anchors on the sent row so later steps can reply in-thread.
+    await setStatus(task.id, {
+      status: "sent",
+      payload: {
+        ...payload,
+        sent_subject: subject,
+        ...(messageIdHeader ? { message_id_header: messageIdHeader } : {}),
+        ...(res.threadId ? { gmail_thread_id: res.threadId } : {}),
+      },
+    });
     return "sent";
   }
   if ("skipped" in res && res.skipped) {
     // e.g. closer hasn't connected Gmail — cancel (don't retry forever) + flag.
-    await setStatus(task.id, { status: "canceled", last_error: `email skipped: ${res.reason}` });
+    await setStatus(task.id, {
+      status: "canceled",
+      last_error: `email skipped: ${res.reason}`,
+    });
     return "skipped";
   }
   const attempts = (task.attempts ?? 0) + 1;
   const errBody = ("error" in res ? res.error : "send failed").slice(0, 500);
   if (attempts < MAX_ATTEMPTS) {
     await setStatus(task.id, {
-      status: "pending", attempts,
+      status: "pending",
+      attempts,
       run_at: new Date(Date.now() + attempts * 5 * 60_000).toISOString(),
       last_error: errBody,
     });
@@ -213,6 +316,33 @@ async function handleEmailTask(task: TaskRow): Promise<Outcome> {
   }
   await setStatus(task.id, { status: "failed", attempts, last_error: errBody });
   return "failed";
+}
+
+// Send-time reply backstop: true when ANY inbound response (SMS reply, email
+// reply, or a completed phone conversation — all land in agent_messages as
+// direction 'inbound') arrived after this task was enqueued. Catches races with
+// the webhook-side cancel and replies that came in on a DIFFERENT channel than
+// the one this task sends on.
+async function repliedSinceEnrollment(task: TaskRow): Promise<boolean> {
+  if (!task.contact_id) return false;
+  const since =
+    (typeof task.payload?.enrolled_at === "string" &&
+      task.payload.enrolled_at) ||
+    task.created_at ||
+    null;
+  if (!since) return false;
+  // IDENTITY-wide: a reply that landed on a duplicate contact (webhook race,
+  // legacy phone format) must still stop this row — that duplicate case is the
+  // very reason this backstop exists.
+  const ids = await identityContactIds(task.contact_id);
+  const { data } = await supabaseAdmin
+    .from("agent_messages")
+    .select("id")
+    .in("contact_id", ids)
+    .eq("direction", "inbound")
+    .gt("created_at", since)
+    .limit(1);
+  return !!(data && data.length);
 }
 
 async function processTask(task: TaskRow): Promise<Outcome> {
@@ -227,25 +357,51 @@ async function processTask(task: TaskRow): Promise<Outcome> {
     CHASE_TASK_TYPES.includes(task.task_type) &&
     (await hasBookedDemo(task.contact_id))
   ) {
-    await setStatus(task.id, { status: "canceled", last_error: "already booked a demo (chase skipped)" });
+    await setStatus(task.id, {
+      status: "canceled",
+      last_error: "already booked a demo (chase skipped)",
+    });
+    return "skipped";
+  }
+
+  // Replied guard: a lead who responded on ANY channel never gets another chase
+  // touch, even if the webhook-side cancel raced or missed this row.
+  if (
+    task.contact_id &&
+    CHASE_TASK_TYPES.includes(task.task_type) &&
+    (await repliedSinceEnrollment(task))
+  ) {
+    await setStatus(task.id, {
+      status: "canceled",
+      last_error: "lead responded (chase skipped)",
+    });
     return "skipped";
   }
 
   // Action tasks (non-SMS) branch out first.
   if (task.task_type === "no_show_check") return await handleNoShowCheck(task);
   if (task.task_type === "call_task") return await handleCallTask(task);
-  if (EMAIL_TASK_TYPES.includes(task.task_type)) return await handleEmailTask(task);
+  if (EMAIL_TASK_TYPES.includes(task.task_type))
+    return await handleEmailTask(task);
 
   // Stale guard: time-sensitive tasks (e.g. reminders) cancel themselves if
   // their window has passed (e.g. quiet-hours pushed them past the demo).
-  if (payload.skip_after && Date.now() > Date.parse(String(payload.skip_after))) {
-    await setStatus(task.id, { status: "canceled", last_error: "window passed" });
+  if (
+    payload.skip_after &&
+    Date.now() > Date.parse(String(payload.skip_after))
+  ) {
+    await setStatus(task.id, {
+      status: "canceled",
+      last_error: "window passed",
+    });
     return "skipped";
   }
 
-  let contact:
-    | { id: number; first_name: string | null; phone_jsonb: unknown }
-    | null = null;
+  let contact: {
+    id: number;
+    first_name: string | null;
+    phone_jsonb: unknown;
+  } | null = null;
   if (task.contact_id) {
     const { data } = await supabaseAdmin
       .from("contacts")
@@ -259,7 +415,10 @@ async function processTask(task: TaskRow): Promise<Outcome> {
   if (!phone) {
     // No number -> can never text. Cancel (not fail) so it stops showing as an
     // error and never retries. Prevention is upstream (calendly_webhook).
-    await setStatus(task.id, { status: "canceled", last_error: "no phone (canceled)" });
+    await setStatus(task.id, {
+      status: "canceled",
+      last_error: "no phone (canceled)",
+    });
     return "skipped";
   }
 
@@ -270,16 +429,25 @@ async function processTask(task: TaskRow): Promise<Outcome> {
     .eq("phone", toE164(phone))
     .maybeSingle();
   if (sup) {
-    await setStatus(task.id, { status: "canceled", last_error: "suppressed (opt-out)" });
+    await setStatus(task.id, {
+      status: "canceled",
+      last_error: "suppressed (opt-out)",
+    });
     return "skipped";
   }
 
-  // Quiet hours → re-defer an hour; the next tick re-checks until in-window.
-  const tz = (payload.tz as string) || Deno.env.get("QUIET_HOURS_TZ") || "America/New_York";
+  // Quiet hours → defer straight to the lead's next 8am with an
+  // order-preserving stagger (see quietHoursDeferMs).
+  const tz =
+    (payload.tz as string) ||
+    Deno.env.get("QUIET_HOURS_TZ") ||
+    "America/New_York";
   if (isQuietHours(tz)) {
     await setStatus(task.id, {
       status: "pending",
-      run_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+      run_at: new Date(
+        Date.now() + quietHoursDeferMs(tz, payload.enrolled_at),
+      ).toISOString(),
     });
     return "deferred";
   }
@@ -292,7 +460,9 @@ async function processTask(task: TaskRow): Promise<Outcome> {
     return "failed";
   }
 
-  const res = await sendSalesSms(phone, content, { contactId: task.contact_id });
+  const res = await sendSalesSms(phone, content, {
+    contactId: task.contact_id,
+  });
   if (res.ok) {
     await setStatus(task.id, { status: "sent" });
     if (task.contact_id) {
@@ -322,9 +492,29 @@ async function processTask(task: TaskRow): Promise<Outcome> {
     return "sent";
   }
 
+  // Provider-side opt-out ("User has opted out of receiving messages"): the
+  // carrier/OpenPhone already honors their STOP even when our webhook never saw
+  // it. Mirror it into sms_suppressions so nothing retries or re-attempts this
+  // number — the per-send suppression guard then blocks all future SMS to it.
+  const errBody = JSON.stringify(res.body).slice(0, 500);
+  if (/opt(ed)?[\s-]?out/i.test(errBody)) {
+    await supabaseAdmin.from("sms_suppressions").upsert(
+      {
+        phone: toE164(phone),
+        reason: "provider_opt_out",
+        contact_id: task.contact_id,
+      },
+      { onConflict: "phone" },
+    );
+    await setStatus(task.id, {
+      status: "canceled",
+      last_error: "suppressed (provider opt-out)",
+    });
+    return "skipped";
+  }
+
   // Transient send failure → backoff retry, else give up.
   const attempts = (task.attempts ?? 0) + 1;
-  const errBody = JSON.stringify(res.body).slice(0, 500);
   if (attempts < MAX_ATTEMPTS) {
     await setStatus(task.id, {
       status: "pending",
@@ -339,11 +529,13 @@ async function processTask(task: TaskRow): Promise<Outcome> {
 }
 
 const handle = async (req: Request) => {
-  if (req.method !== "POST") return createErrorResponse(405, "Method Not Allowed");
+  if (req.method !== "POST")
+    return createErrorResponse(405, "Method Not Allowed");
 
   const expected = Deno.env.get("DISPATCH_TASKS_TOKEN");
   const provided = req.headers.get("X-DISPATCH-TOKEN");
-  if (!expected || provided !== expected) return createErrorResponse(401, "Unauthorized");
+  if (!expected || provided !== expected)
+    return createErrorResponse(401, "Unauthorized");
 
   // Global pause: HOLD the queue. Leave due tasks 'pending' so they flush the
   // moment sends are re-enabled - never cancel them (cancelling here permanently
@@ -355,14 +547,19 @@ const handle = async (req: Request) => {
       .select("*", { count: "exact", head: true })
       .eq("status", "pending")
       .lte("run_at", new Date().toISOString());
-    return new Response(JSON.stringify({ ok: true, paused: true, held: count ?? 0 }), {
-      headers: { "Content-Type": "application/json", ...corsHeaders },
-    });
+    return new Response(
+      JSON.stringify({ ok: true, paused: true, held: count ?? 0 }),
+      {
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      },
+    );
   }
 
   const { data: due } = await supabaseAdmin
     .from("scheduled_tasks")
-    .select("id, deal_id, contact_id, task_type, payload, run_at, attempts")
+    .select(
+      "id, deal_id, contact_id, task_type, payload, run_at, attempts, created_at",
+    )
     .eq("status", "pending")
     .lte("run_at", new Date().toISOString())
     .order("run_at", { ascending: true })
@@ -383,7 +580,10 @@ const handle = async (req: Request) => {
       summary[await processTask(task)]++;
     } catch (e) {
       console.error("[dispatch_tasks] task threw", task.id, e);
-      await setStatus(task.id, { status: "failed", last_error: String(e).slice(0, 500) });
+      await setStatus(task.id, {
+        status: "failed",
+        last_error: String(e).slice(0, 500),
+      });
       summary.failed++;
     }
   }

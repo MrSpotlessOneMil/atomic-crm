@@ -32,6 +32,7 @@ export const ATTRIBUTION_KEYS = [
   "referrer",
   "landing_path",
   "leadgen_id", // Meta leadgen id (idempotency + audit trail)
+  "language", // "es" -> Spanish drip end-to-end
   "first_touch_at",
 ] as const;
 
@@ -66,7 +67,9 @@ export function mergeAttribution(
 // Best-effort offer extraction from ad / campaign / form names, e.g.
 // "RL - Cleaning Owners - 20% Off - video 3" -> "20% off",
 // "Spring 14-Day Free Trial form" -> "14-day free trial".
-export function parseOffer(...names: (string | null | undefined)[]): string | null {
+export function parseOffer(
+  ...names: (string | null | undefined)[]
+): string | null {
   for (const name of names) {
     if (!name) continue;
     const pct = name.match(/(\d{1,3})\s*%\s*off/i);
@@ -81,11 +84,14 @@ export function parseOffer(...names: (string | null | undefined)[]): string | nu
 
 // One human-readable line for notes / the AI prompt, e.g.
 // "facebook ad \"Robot Voice Demo v2\" (campaign Robinline Campaign 1, 20% off)".
-export function attributionSummary(attr: Record<string, string> | null | undefined): string | null {
+export function attributionSummary(
+  attr: Record<string, string> | null | undefined,
+): string | null {
   if (!attr) return null;
   const bits: string[] = [];
   const channel = attr.platform || attr.utm_source;
-  if (attr.ad_name) bits.push(`${channel ? channel + " " : ""}ad "${attr.ad_name}"`);
+  if (attr.ad_name)
+    bits.push(`${channel ? channel + " " : ""}ad "${attr.ad_name}"`);
   else if (channel) bits.push(`via ${channel}`);
   const extras: string[] = [];
   if (attr.campaign_name) extras.push(`campaign ${attr.campaign_name}`);

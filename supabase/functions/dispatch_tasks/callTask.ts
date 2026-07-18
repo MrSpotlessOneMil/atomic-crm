@@ -23,6 +23,7 @@ import {
   defaultTz,
   firstPhone,
   isQuietHours,
+  quietHoursDeferMs,
   setStatus,
 } from "./taskUtil.ts";
 
@@ -37,8 +38,10 @@ export function callTaskText(opts: {
   const step = Number(opts.step) || 1;
   const of = Number(opts.of) || step;
   let text = `Double dial ${step}/${of} - call twice back-to-back, no answer = voicemail + text - ${opts.phone}`;
-  if (typeof opts.source === "string" && opts.source) text += ` - via ${opts.source}`;
-  if (typeof opts.leadMagnet === "string" && opts.leadMagnet) text += ` (${opts.leadMagnet})`;
+  if (typeof opts.source === "string" && opts.source)
+    text += ` - via ${opts.source}`;
+  if (typeof opts.leadMagnet === "string" && opts.leadMagnet)
+    text += ` (${opts.leadMagnet})`;
   return text;
 }
 
@@ -57,7 +60,10 @@ export async function handleCallTask(task: TaskRow): Promise<Outcome> {
 
   const phone = firstPhone(contact ?? null, payload.to);
   if (!phone) {
-    await setStatus(task.id, { status: "canceled", last_error: "no phone (canceled)" });
+    await setStatus(task.id, {
+      status: "canceled",
+      last_error: "no phone (canceled)",
+    });
     return "skipped";
   }
 
@@ -67,14 +73,18 @@ export async function handleCallTask(task: TaskRow): Promise<Outcome> {
     .eq("phone", toE164(phone))
     .maybeSingle();
   if (sup) {
-    await setStatus(task.id, { status: "canceled", last_error: "suppressed (opt-out)" });
+    await setStatus(task.id, {
+      status: "canceled",
+      last_error: "suppressed (opt-out)",
+    });
     return "skipped";
   }
 
   // Lead replied since enrollment -> the live conversation owns them now
   // (quo_inbound cancels pending call_tasks on reply; this is the race/other-
   // channel backstop).
-  const enrolledAt = typeof payload.enrolled_at === "string" ? payload.enrolled_at : null;
+  const enrolledAt =
+    typeof payload.enrolled_at === "string" ? payload.enrolled_at : null;
   if (enrolledAt) {
     const { data: replies } = await supabaseAdmin
       .from("agent_messages")
@@ -84,7 +94,10 @@ export async function handleCallTask(task: TaskRow): Promise<Outcome> {
       .gt("created_at", enrolledAt)
       .limit(1);
     if (replies && replies.length) {
-      await setStatus(task.id, { status: "canceled", last_error: "lead replied" });
+      await setStatus(task.id, {
+        status: "canceled",
+        last_error: "lead replied",
+      });
       return "skipped";
     }
   }
@@ -100,15 +113,21 @@ export async function handleCallTask(task: TaskRow): Promise<Outcome> {
     .is("done_date", null)
     .limit(1);
   if (openTask && openTask.length) {
-    await setStatus(task.id, { status: "sent", payload: { ...payload, coalesced: true } });
+    await setStatus(task.id, {
+      status: "sent",
+      payload: { ...payload, coalesced: true },
+    });
     return "skipped";
   }
 
-  // Quiet hours -> re-defer an hour; the next tick re-checks until in-window.
+  // Quiet hours -> defer straight to the lead's next 8am (no stagger needed;
+  // call sessions are human-paced anyway).
   if (isQuietHours(defaultTz(payload.tz))) {
     await setStatus(task.id, {
       status: "pending",
-      run_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+      run_at: new Date(
+        Date.now() + quietHoursDeferMs(defaultTz(payload.tz)),
+      ).toISOString(),
     });
     return "deferred";
   }
@@ -147,7 +166,11 @@ export async function handleCallTask(task: TaskRow): Promise<Outcome> {
       });
       return "deferred";
     }
-    await setStatus(task.id, { status: "failed", attempts, last_error: errBody });
+    await setStatus(task.id, {
+      status: "failed",
+      attempts,
+      last_error: errBody,
+    });
     return "failed";
   }
 
@@ -183,6 +206,9 @@ export async function handleCallTask(task: TaskRow): Promise<Outcome> {
     console.error("[callTask] notification insert failed", e);
   }
 
-  await setStatus(task.id, { status: "sent", payload: { ...payload, task_id: ins.data.id } });
+  await setStatus(task.id, {
+    status: "sent",
+    payload: { ...payload, task_id: ins.data.id },
+  });
   return "sent";
 }

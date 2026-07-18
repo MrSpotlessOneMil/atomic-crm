@@ -538,6 +538,54 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION "public"."phone_to_e164"("raw" "text") RETURNS "text"
+    LANGUAGE "plpgsql" IMMUTABLE
+    AS $$
+declare
+  digits text;
+begin
+    if raw is null then
+        return null;
+    end if;
+    if left(btrim(raw), 1) = '+' then
+        digits := regexp_replace(raw, '\D', '', 'g');
+        return case when digits = '' then raw else '+' || digits end;
+    end if;
+    digits := regexp_replace(raw, '\D', '', 'g');
+    if digits = '' then
+        return raw;
+    elsif length(digits) = 10 then
+        return '+1' || digits;
+    elsif length(digits) = 11 and left(digits, 1) = '1' then
+        return '+' || digits;
+    else
+        return '+' || digits;
+    end if;
+end;
+$$;
+
+CREATE OR REPLACE FUNCTION "public"."normalize_contact_phones"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+begin
+    if new.phone_jsonb is not null and jsonb_typeof(new.phone_jsonb) = 'array' then
+        select coalesce(jsonb_agg(
+            case
+                when jsonb_typeof(elem) = 'object' and (elem->>'number') is not null
+                    then jsonb_set(elem, '{number}', to_jsonb(public.phone_to_e164(elem->>'number')))
+                when jsonb_typeof(elem) = 'string' and btrim(elem #>> '{}') <> ''
+                    then to_jsonb(public.phone_to_e164(elem #>> '{}'))
+                else elem
+            end
+            order by ord
+        ), '[]'::jsonb)
+        into new.phone_jsonb
+        from jsonb_array_elements(new.phone_jsonb) with ordinality as t(elem, ord);
+    end if;
+    return new;
+end;
+$$;
+
 CREATE OR REPLACE FUNCTION "public"."mark_onboarding_completed"() RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     SET "search_path" TO 'public'

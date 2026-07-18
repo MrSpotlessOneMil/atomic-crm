@@ -22,7 +22,11 @@ import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
 import { toE164 } from "../_shared/quoSales.ts";
 import { enrollLeadCadence, ensureOpenDeal } from "../_shared/enrollment.ts";
-import { normalizeLeadSource, isColdSource } from "../_shared/leadPlaybooks.ts";
+import {
+  normalizeLeadSource,
+  isColdSource,
+  magnetFromLeadSource,
+} from "../_shared/leadPlaybooks.ts";
 import { hasBookedDemo } from "../_shared/bookingGuard.ts";
 
 const LOOKBACK_DAYS = 30;
@@ -53,19 +57,25 @@ interface ContactRow {
 }
 
 const handle = async (req: Request) => {
-  if (req.method !== "POST") return createErrorResponse(405, "Method Not Allowed");
+  if (req.method !== "POST")
+    return createErrorResponse(405, "Method Not Allowed");
 
   const expected = Deno.env.get("DISPATCH_TASKS_TOKEN");
   const provided = req.headers.get("X-DISPATCH-TOKEN");
-  if (!expected || provided !== expected) return createErrorResponse(401, "Unauthorized");
+  if (!expected || provided !== expected)
+    return createErrorResponse(401, "Unauthorized");
 
-  const since = new Date(Date.now() - LOOKBACK_DAYS * 24 * 3600_000).toISOString();
+  const since = new Date(
+    Date.now() - LOOKBACK_DAYS * 24 * 3600_000,
+  ).toISOString();
 
   // Candidates: recent contacts with a KNOWN source. lead_source null is the
   // cold outbound list — never auto-drip those from here.
   const { data: candidates, error } = await supabaseAdmin
     .from("contacts")
-    .select("id, first_name, last_name, lead_source, company_id, email_jsonb, phone_jsonb, attribution")
+    .select(
+      "id, first_name, last_name, lead_source, company_id, email_jsonb, phone_jsonb, attribution",
+    )
     .gte("first_seen", since)
     .not("lead_source", "is", null)
     .order("first_seen", { ascending: false })
@@ -94,8 +104,9 @@ const handle = async (req: Request) => {
       continue;
     }
 
-    // In a live conversation already (texted the sales line / replied)? The
-    // agent owns them - don't start a chase cadence over the top.
+    // In a live conversation already (texted the sales line / replied by email
+    // / a real phone conversation - all recorded as inbound agent_messages)?
+    // The agent/human owns them - don't start a chase cadence over the top.
     const { data: inboundMsg } = await supabaseAdmin
       .from("agent_messages")
       .select("id")
@@ -107,13 +118,38 @@ const handle = async (req: Request) => {
       continue;
     }
 
+    // Belt-and-braces for calls logged before quo_call_events wrote transcript
+    // markers: any inbound call, or an outbound call long enough to be a real
+    // conversation, also counts as in-conversation. Two targeted exists-checks
+    // instead of sampling rows — a sample can miss the one call that matters.
+    const { data: inboundCall } = await supabaseAdmin
+      .from("call_logs")
+      .select("id")
+      .eq("contact_id", c.id)
+      .eq("direction", "inbound")
+      .limit(1);
+    const { data: longCall } =
+      inboundCall && inboundCall.length
+        ? { data: inboundCall }
+        : await supabaseAdmin
+            .from("call_logs")
+            .select("id")
+            .eq("contact_id", c.id)
+            .gte("duration", 120)
+            .limit(1);
+    if (longCall && longCall.length) {
+      bump("skipped_in_conversation");
+      continue;
+    }
+
     // Booked (on any duplicate contact) = past the chase phase.
     if (await hasBookedDemo(c.id)) {
       bump("skipped_booked");
       continue;
     }
 
-    const name = `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() || e164 || email;
+    const name =
+      `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() || e164 || email;
     const dealId = await ensureOpenDeal({
       contactId: c.id,
       name,
@@ -121,7 +157,14 @@ const handle = async (req: Request) => {
       companyId: c.company_id,
     });
 
-    const magnet = typeof c.attribution?.lead_magnet === "string" ? (c.attribution.lead_magnet as string) : "";
+    // Magnet: attribution first, else recover it from the raw lead_source label
+    // ("Lead Magnet — Cleaning Guide") that the pre-fix crm-sync path wrote.
+    const magnet =
+      (typeof c.attribution?.lead_magnet === "string"
+        ? (c.attribution.lead_magnet as string)
+        : "") || magnetFromLeadSource(c.lead_source);
+    const language =
+      c.attribution?.language === "es" ? ("es" as const) : ("en" as const);
     const result = await enrollLeadCadence({
       contactId: c.id,
       dealId,
@@ -129,11 +172,17 @@ const handle = async (req: Request) => {
       magnet,
       e164: e164 || null,
       email: email || null,
+      language,
     });
 
     if (result.enqueued > 0) {
       summary.enrolled++;
-      console.warn("[enroll_orphans] enrolled", { contactId: c.id, source, enqueued: result.enqueued, callSteps: result.callSteps });
+      console.warn("[enroll_orphans] enrolled", {
+        contactId: c.id,
+        source,
+        enqueued: result.enqueued,
+        callSteps: result.callSteps,
+      });
       try {
         await supabaseAdmin.from("contact_notes").insert({
           contact_id: c.id,
@@ -141,7 +190,9 @@ const handle = async (req: Request) => {
           date: new Date().toISOString(),
           status: "warm",
         });
-      } catch { /* visibility only */ }
+      } catch {
+        /* visibility only */
+      }
     } else if (result.skipped === "flood cap") {
       bump("skipped_flood_cap");
       break; // every further enrollment this run would hit the same cap

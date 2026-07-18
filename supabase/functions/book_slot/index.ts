@@ -9,7 +9,9 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
-import { closeOpenCallTasks } from "../_shared/callTasks.ts";
+import { haltFollowup } from "../_shared/haltFollowup.ts";
+import { ensureOpenDeal } from "../_shared/enrollment.ts";
+import { scheduleDemoReminders } from "../_shared/demoReminders.ts";
 
 type RequestBody = {
   sales_id?: number | string;
@@ -119,18 +121,25 @@ const handle = async (req: Request) => {
 
   // Conflict check: any other scheduled booking that overlaps with this one.
   const startIso = scheduled.toISOString();
-  const endIso = new Date(scheduled.getTime() + duration * 60_000).toISOString();
+  const endIso = new Date(
+    scheduled.getTime() + duration * 60_000,
+  ).toISOString();
   const { data: conflicts } = await supabaseAdmin
     .from("bookings")
     .select("id, scheduled_for, duration_minutes, status")
     .eq("sales_id", salesId)
     .eq("status", "scheduled")
-    .gte("scheduled_for", new Date(scheduled.getTime() - 4 * 60 * 60_000).toISOString())
+    .gte(
+      "scheduled_for",
+      new Date(scheduled.getTime() - 4 * 60 * 60_000).toISOString(),
+    )
     .lte("scheduled_for", endIso);
   const hasConflict = (conflicts ?? []).some((b) => {
     const bStart = new Date(b.scheduled_for).getTime();
     const bEnd = bStart + (b.duration_minutes ?? 30) * 60_000;
-    return bStart < new Date(endIso).getTime() && bEnd > new Date(startIso).getTime();
+    return (
+      bStart < new Date(endIso).getTime() && bEnd > new Date(startIso).getTime()
+    );
   });
   if (hasConflict) {
     return createErrorResponse(409, "Slot already booked");
@@ -191,8 +200,35 @@ const handle = async (req: Request) => {
     return createErrorResponse(500, "Failed to create booking");
   }
 
-  // Booked = stop chasing by phone: clear any open CALL NOW items for them.
-  if (contactId) await closeOpenCallTasks(contactId);
+  // Booked = the chase is over. Move the deal to demo-booked (without this the
+  // bookingGuard stops covering them the moment the demo time passes and the
+  // leftover nurture would RESUME), cancel every pending chase task
+  // identity-wide, and schedule the show-rate stack.
+  if (contactId) {
+    const dealId = await ensureOpenDeal({
+      contactId,
+      name: `${firstName} ${lastName}`.trim() || email,
+      source: "inbound",
+    });
+    if (dealId) {
+      await supabaseAdmin
+        .from("deals")
+        .update({ stage: "demo-booked", updated_at: new Date().toISOString() })
+        .eq("id", dealId);
+    }
+    await haltFollowup({ contactId, reason: "booked" });
+    // Enqueue the show-rate stack even while sends are paused - the dispatcher
+    // HOLDS the queue and flushes on resume; skipping here would mean a booked
+    // lead whose reminders simply never exist.
+    if (phone) {
+      await scheduleDemoReminders({
+        contactId,
+        dealId,
+        startISO: scheduled.toISOString(),
+        durationMinutes: duration,
+      });
+    }
+  }
 
   return new Response(
     JSON.stringify({

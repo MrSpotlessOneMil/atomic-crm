@@ -32,6 +32,7 @@ alter table public.bookings enable row level security;
 -- service role (edge functions / pg_cron). Admin read views come in Phase 5.
 alter table public.scheduled_tasks enable row level security;
 alter table public.sms_suppressions enable row level security;
+alter table public.email_suppressions enable row level security;
 alter table public.agent_messages enable row level security;
 -- call_logs: reps read team-wide (policy below); writes stay service-role only.
 alter table public.call_logs enable row level security;

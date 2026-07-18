@@ -19,6 +19,16 @@ import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
 import { toE164, getQuoKey } from "../_shared/quoSales.ts";
+import {
+  haltFollowup,
+  notifyLeadReplied,
+  phoneVariants,
+} from "../_shared/haltFollowup.ts";
+
+// An OUTBOUND call this long means a human actually talked to the lead (a
+// double-dial that hits voicemail runs well under this). Inbound calls count as
+// a response at ANY length - the lead picked up the phone and called us.
+const OUTBOUND_CONVERSATION_MIN_SECONDS = 120;
 
 async function getWebhookKeys(): Promise<string[]> {
   const { data } = await supabaseAdmin
@@ -27,7 +37,10 @@ async function getWebhookKeys(): Promise<string[]> {
     .eq("key", "SALES_QUO_CALLS_WEBHOOK_SECRET")
     .maybeSingle();
   const raw = (data?.value ?? "") as string;
-  return raw.split(",").map((s) => s.trim()).filter(Boolean);
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 function b64ToBytes(b64: string): Uint8Array {
@@ -43,7 +56,11 @@ function bytesToB64(buf: ArrayBuffer): string {
   return btoa(s);
 }
 
-async function verifySignature(rawBody: string, header: string | null, b64Secret: string): Promise<boolean> {
+async function verifySignature(
+  rawBody: string,
+  header: string | null,
+  b64Secret: string,
+): Promise<boolean> {
   if (!header) return false;
   const parts = header.split(";"); // hmac;1;<timestamp>;<base64sig>
   if (parts.length < 4) return false;
@@ -57,11 +74,16 @@ async function verifySignature(rawBody: string, header: string | null, b64Secret
       false,
       ["sign"],
     );
-    const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${timestamp}.${rawBody}`));
+    const sig = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      new TextEncoder().encode(`${timestamp}.${rawBody}`),
+    );
     const computed = bytesToB64(sig);
     if (computed.length !== provided.length) return false;
     let diff = 0;
-    for (let i = 0; i < computed.length; i++) diff |= computed.charCodeAt(i) ^ provided.charCodeAt(i);
+    for (let i = 0; i < computed.length; i++)
+      diff |= computed.charCodeAt(i) ^ provided.charCodeAt(i);
     return diff === 0;
   } catch (e) {
     console.error("[quo_call_events] verify error", e);
@@ -74,16 +96,22 @@ const ok = (extra: Record<string, unknown> = {}) =>
     headers: { "Content-Type": "application/json", ...corsHeaders },
   });
 
-const firstStr = (v: unknown): string => (Array.isArray(v) ? String(v[0] ?? "") : String(v ?? ""));
+const firstStr = (v: unknown): string =>
+  Array.isArray(v) ? String(v[0] ?? "") : String(v ?? "");
 
 async function contactIdByPhone(e164: string): Promise<number | null> {
   if (!e164) return null;
-  const { data } = await supabaseAdmin
-    .from("contacts")
-    .select("id")
-    .contains("phone_jsonb", [{ number: e164 }])
-    .limit(1);
-  return (data && data[0]?.id) ?? null;
+  // Try every stored format (E.164 / bare digits) so a pre-backfill contact
+  // still matches and the halt lands on the RIGHT record.
+  for (const variant of phoneVariants(e164)) {
+    const { data } = await supabaseAdmin
+      .from("contacts")
+      .select("id")
+      .contains("phone_jsonb", [{ number: variant }])
+      .limit(1);
+    if (data && data[0]?.id) return data[0].id;
+  }
+  return null;
 }
 
 // The rep who owns the CRM-side number, if any (sales.quo_phone).
@@ -97,19 +125,27 @@ async function salesIdByQuoPhone(e164: string): Promise<number | null> {
     for (const s of data ?? []) {
       if (toE164(String(s.quo_phone ?? "")) === e164) return s.id as number;
     }
-  } catch { /* optional enrichment only */ }
+  } catch {
+    /* optional enrichment only */
+  }
   return null;
 }
 
 // Find-or-create the call row keyed by openphone_call_id, then patch it.
-async function upsertCallLog(callId: string, patch: Record<string, unknown>): Promise<number | null> {
+async function upsertCallLog(
+  callId: string,
+  patch: Record<string, unknown>,
+): Promise<number | null> {
   const { data: existing } = await supabaseAdmin
     .from("call_logs")
     .select("id")
     .eq("openphone_call_id", callId)
     .limit(1);
   if (existing && existing[0]) {
-    const { error } = await supabaseAdmin.from("call_logs").update(patch).eq("id", existing[0].id);
+    const { error } = await supabaseAdmin
+      .from("call_logs")
+      .update(patch)
+      .eq("id", existing[0].id);
     if (error) console.error("[quo_call_events] update failed", error);
     return existing[0].id as number;
   }
@@ -132,10 +168,12 @@ function fmtDuration(seconds: unknown): string {
 }
 
 const handle = async (req: Request) => {
-  if (req.method !== "POST") return createErrorResponse(405, "Method Not Allowed");
+  if (req.method !== "POST")
+    return createErrorResponse(405, "Method Not Allowed");
 
   const secrets = await getWebhookKeys();
-  if (!secrets.length) return createErrorResponse(503, "Call events webhook not configured");
+  if (!secrets.length)
+    return createErrorResponse(503, "Call events webhook not configured");
 
   const raw = await req.text();
   const header = req.headers.get("openphone-signature");
@@ -175,7 +213,9 @@ const handle = async (req: Request) => {
       participant: external || null,
       direction,
       status: String(obj.status ?? "completed"),
-      duration: Number.isFinite(Number(obj.duration)) ? Number(obj.duration) : null,
+      duration: Number.isFinite(Number(obj.duration))
+        ? Number(obj.duration)
+        : null,
       sales_id: salesId,
       completed_at: (obj.completedAt as string) ?? new Date().toISOString(),
     });
@@ -189,7 +229,41 @@ const handle = async (req: Request) => {
           date: new Date().toISOString(),
           status: "warm",
         });
-      } catch { /* visibility only */ }
+      } catch {
+        /* visibility only */
+      }
+    }
+
+    // A real phone conversation IS a response: halt every automated touch.
+    // Inbound = the lead called us (any duration). Outbound counts only past
+    // the voicemail threshold, so a no-answer double-dial keeps the cadence.
+    const durationSec = Number(obj.duration) || 0;
+    const isConversation =
+      contactId !== null &&
+      (direction === "inbound" ||
+        durationSec >= OUTBOUND_CONVERSATION_MIN_SECONDS);
+    if (isConversation && contactId) {
+      // Transcript marker: makes the conversation visible to the AI agent's
+      // context, the dispatcher's replied-since-enrollment backstop, and the
+      // enroll_orphans in-conversation skip.
+      try {
+        await supabaseAdmin.from("agent_messages").insert({
+          contact_id: contactId,
+          deal_id: null,
+          direction: "inbound",
+          body: `[call] ${direction} phone call${fmtDuration(obj.duration)} completed`,
+        });
+      } catch {
+        /* transcript only */
+      }
+      await haltFollowup({ contactId, reason: "call_conversation" });
+      if (direction === "inbound") {
+        await notifyLeadReplied({
+          contactId,
+          channel: "call",
+          preview: `Inbound call${fmtDuration(obj.duration)}`,
+        });
+      }
     }
     return ok({ call_log_id: rowId });
   }
@@ -198,7 +272,10 @@ const handle = async (req: Request) => {
     const callId = String(obj.id ?? obj.callId ?? "");
     if (!callId) return ok({ ignored: "no call id" });
     const media = Array.isArray(obj.media) ? obj.media : [];
-    const url = media.map((m: any) => m?.url).find((u: unknown) => typeof u === "string" && u) ?? null;
+    const url =
+      media
+        .map((m: any) => m?.url)
+        .find((u: unknown) => typeof u === "string" && u) ?? null;
     if (!url) return ok({ ignored: "no media url" });
     const rowId = await upsertCallLog(callId, { recording_url: url });
     return ok({ call_log_id: rowId });
@@ -213,9 +290,12 @@ const handle = async (req: Request) => {
       try {
         const apiKey = await getQuoKey();
         if (apiKey) {
-          const res = await fetch(`https://api.openphone.com/v1/call-transcripts/${encodeURIComponent(callId)}`, {
-            headers: { Authorization: apiKey },
-          });
+          const res = await fetch(
+            `https://api.openphone.com/v1/call-transcripts/${encodeURIComponent(callId)}`,
+            {
+              headers: { Authorization: apiKey },
+            },
+          );
           if (res.ok) {
             const body = await res.json();
             dialogue = body?.data?.dialogue ?? body?.dialogue ?? null;
@@ -225,11 +305,14 @@ const handle = async (req: Request) => {
         console.error("[quo_call_events] transcript fetch failed", e);
       }
     }
-    if (!Array.isArray(dialogue) || !dialogue.length) return ok({ ignored: "no transcript" });
+    if (!Array.isArray(dialogue) || !dialogue.length)
+      return ok({ ignored: "no transcript" });
 
     // Short gist for prompts/cards: the first few lines of dialogue.
     const summary = dialogue
-      .map((d: any) => (d && typeof d === "object" ? String(d.content ?? "") : ""))
+      .map((d: any) =>
+        d && typeof d === "object" ? String(d.content ?? "") : "",
+      )
       .filter(Boolean)
       .join(" / ")
       .slice(0, 300);

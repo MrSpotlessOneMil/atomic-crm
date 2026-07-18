@@ -13,12 +13,28 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
-import { getSalesNumber, toE164, salesSendsPaused, logSms } from "../_shared/quoSales.ts";
+import {
+  getSalesNumber,
+  toE164,
+  salesSendsPaused,
+  logSms,
+} from "../_shared/quoSales.ts";
 import { runSalesAgentTurn } from "../_shared/salesAgent.ts";
 import { enrichFromMessage } from "../_shared/enrich.ts";
-import { closeOpenCallTasks } from "../_shared/callTasks.ts";
+import {
+  haltFollowup,
+  notifyLeadReplied,
+  phoneVariants,
+} from "../_shared/haltFollowup.ts";
 
-const STOP_RE = /^\s*(stop|stopall|unsubscribe|end|quit|cancel|optout|opt out)\s*$/i;
+// Opt-out matcher. Deliberately wider than the carrier keywords: real people
+// write "Stop.", "please stop", "stop texting me", "no more texts" - all of
+// which the carrier may already honor on its side, so if we don't suppress too,
+// every later send fails with "user has opted out". ALTO is the standard
+// Spanish opt-out. Trailing punctuation is tolerated; anything with more words
+// than an opt-out phrase is treated as a real reply (the agent handles it).
+const STOP_RE =
+  /^\s*(please\s+)?(stop|stopall|stop\s+all|unsubscribe|end|quit|cancel|optout|opt[ -]?out|alto|stop\s+text(ing)?( me)?|stop\s+messaging( me)?|no\s+more\s+(texts|messages)|remove\s+me|do\s+not\s+text( me)?|don'?t\s+text( me)?( again)?)\s*[.!?]*\s*$/i;
 
 function b64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
@@ -33,7 +49,11 @@ function bytesToB64(buf: ArrayBuffer): string {
   return btoa(s);
 }
 
-async function verifySignature(rawBody: string, header: string | null, b64Secret: string): Promise<boolean> {
+async function verifySignature(
+  rawBody: string,
+  header: string | null,
+  b64Secret: string,
+): Promise<boolean> {
   if (!header) return false;
   const parts = header.split(";"); // hmac;1;<timestamp>;<base64sig>
   if (parts.length < 4) return false;
@@ -47,11 +67,16 @@ async function verifySignature(rawBody: string, header: string | null, b64Secret
       false,
       ["sign"],
     );
-    const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${timestamp}.${rawBody}`));
+    const sig = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      new TextEncoder().encode(`${timestamp}.${rawBody}`),
+    );
     const computed = bytesToB64(sig);
     if (computed.length !== provided.length) return false;
     let diff = 0;
-    for (let i = 0; i < computed.length; i++) diff |= computed.charCodeAt(i) ^ provided.charCodeAt(i);
+    for (let i = 0; i < computed.length; i++)
+      diff |= computed.charCodeAt(i) ^ provided.charCodeAt(i);
     return diff === 0;
   } catch (e) {
     console.error("[quo_inbound] verify error", e);
@@ -64,16 +89,25 @@ const ok = () =>
     headers: { "Content-Type": "application/json", ...corsHeaders },
   });
 
-const firstStr = (v: unknown): string => (Array.isArray(v) ? String(v[0] ?? "") : String(v ?? ""));
+const firstStr = (v: unknown): string =>
+  Array.isArray(v) ? String(v[0] ?? "") : String(v ?? "");
 
 const handle = async (req: Request) => {
-  if (req.method !== "POST") return createErrorResponse(405, "Method Not Allowed");
+  if (req.method !== "POST")
+    return createErrorResponse(405, "Method Not Allowed");
 
   const secret = Deno.env.get("SALES_QUO_WEBHOOK_SECRET");
-  if (!secret) return createErrorResponse(503, "Inbound webhook not configured");
+  if (!secret)
+    return createErrorResponse(503, "Inbound webhook not configured");
 
   const raw = await req.text();
-  if (!(await verifySignature(raw, req.headers.get("openphone-signature"), secret))) {
+  if (
+    !(await verifySignature(
+      raw,
+      req.headers.get("openphone-signature"),
+      secret,
+    ))
+  ) {
     return createErrorResponse(401, "Bad signature");
   }
 
@@ -96,33 +130,50 @@ const handle = async (req: Request) => {
   // SCOPE: only act on texts to our dedicated sales line.
   const sales = toE164((await getSalesNumber()) ?? "");
   if (!sales || to !== sales) {
-    console.warn("[quo_inbound] ignoring message not addressed to sales number", { to });
+    console.warn(
+      "[quo_inbound] ignoring message not addressed to sales number",
+      { to },
+    );
     return ok();
   }
 
-  // Find or create the contact for this sender.
+  // Find or create the contact for this sender. Try every stored phone format
+  // (E.164 / bare digits) so a pre-backfill contact still matches instead of
+  // spawning a duplicate whose reply would cancel nothing on the original.
   let contactId: number | null = null;
   let leadLabel = `Lead ${from}`;
-  {
+  for (const variant of phoneVariants(from)) {
     const { data } = await supabaseAdmin
       .from("contacts")
       .select("id")
-      .contains("phone_jsonb", [{ number: from }])
+      .contains("phone_jsonb", [{ number: variant }])
       .limit(1);
-    contactId = (data && data[0]?.id) ?? null;
+    if (data && data[0]?.id) {
+      contactId = data[0].id;
+      break;
+    }
   }
   if (!contactId) {
     // Enrich from the first message (fetch any website they texted) so we have a
     // real name + company instead of "Lead".
     const id = await enrichFromMessage(text);
-    leadLabel = id.company_name || `${id.first_name} ${id.last_name}`.trim() || leadLabel;
+    leadLabel =
+      id.company_name || `${id.first_name} ${id.last_name}`.trim() || leadLabel;
 
     let companyId: number | null = null;
     if (id.company_name) {
-      const { data: existing } = await supabaseAdmin.from("companies").select("id").ilike("name", id.company_name).limit(1);
+      const { data: existing } = await supabaseAdmin
+        .from("companies")
+        .select("id")
+        .ilike("name", id.company_name)
+        .limit(1);
       if (existing && existing[0]) companyId = existing[0].id;
       else {
-        const c = await supabaseAdmin.from("companies").insert({ name: id.company_name }).select("id").single();
+        const c = await supabaseAdmin
+          .from("companies")
+          .insert({ name: id.company_name })
+          .select("id")
+          .single();
         if (!c.error) companyId = c.data.id;
       }
     }
@@ -148,7 +199,10 @@ const handle = async (req: Request) => {
     }
     contactId = ins.data.id;
   } else {
-    await supabaseAdmin.from("contacts").update({ last_seen: new Date().toISOString() }).eq("id", contactId);
+    await supabaseAdmin
+      .from("contacts")
+      .update({ last_seen: new Date().toISOString() })
+      .eq("id", contactId);
   }
 
   // Ensure an open deal exists (cold inbound may not have one).
@@ -158,21 +212,38 @@ const handle = async (req: Request) => {
       .from("deals")
       .select("id")
       .contains("contact_ids", [contactId])
-      .in("stage", ["lead", "contacted", "demo-booked", "demo-done", "proposal-sent", "in-negociation"])
+      .in("stage", [
+        "lead",
+        "contacted",
+        "demo-booked",
+        "demo-done",
+        "proposal-sent",
+        "in-negociation",
+      ])
       .limit(1);
     dealId = (data && data[0]?.id) ?? null;
   }
   if (!dealId) {
     const d = await supabaseAdmin
       .from("deals")
-      .insert({ name: leadLabel, stage: "lead", category: "inbound", contact_ids: [contactId] })
+      .insert({
+        name: leadLabel,
+        stage: "lead",
+        category: "inbound",
+        contact_ids: [contactId],
+      })
       .select("id")
       .single();
     if (!d.error) dealId = d.data.id;
   }
 
   // Record the inbound message (machine transcript + human timeline).
-  await supabaseAdmin.from("agent_messages").insert({ contact_id: contactId, deal_id: dealId, direction: "inbound", body: text });
+  await supabaseAdmin.from("agent_messages").insert({
+    contact_id: contactId,
+    deal_id: dealId,
+    direction: "inbound",
+    body: text,
+  });
   // Persist to the SMS analytics log (best-effort).
   if (contactId) {
     await logSms({
@@ -192,32 +263,63 @@ const handle = async (req: Request) => {
       date: new Date().toISOString(),
       status: "warm",
     });
-  } catch (_e) { /* visibility only */ }
+  } catch (_e) {
+    /* visibility only */
+  }
 
-  // STOP -> suppress + cancel pending, acknowledge once, do NOT invoke the agent.
+  // STOP -> suppress + halt EVERYTHING (reminders included), identity-wide.
+  // Also suppress their emails: "stop" to the same brand means stop, not
+  // "keep emailing me". Acknowledge silently, never invoke the agent.
   if (STOP_RE.test(text)) {
-    await supabaseAdmin.from("sms_suppressions").upsert({ phone: from, reason: "stop", contact_id: contactId }, { onConflict: "phone" });
     await supabaseAdmin
-      .from("scheduled_tasks")
-      .update({ status: "canceled", updated_at: new Date().toISOString() })
-      .eq("contact_id", contactId)
-      .eq("status", "pending");
-    // Also close any already-bridged CALL NOW items — nobody dials an opt-out.
-    await closeOpenCallTasks(contactId);
+      .from("sms_suppressions")
+      .upsert(
+        { phone: from, reason: "stop", contact_id: contactId },
+        { onConflict: "phone" },
+      );
+    // Halt first (returns the full identity: this contact + every duplicate),
+    // then suppress the emails of EVERY one of those records — a stop keyed to
+    // just one duplicate would leave the other row's email drip legal-but-live.
+    const halted = await haltFollowup({
+      contactId,
+      reason: "stop",
+      scope: "all",
+    });
+    const { data: idRows } = await supabaseAdmin
+      .from("contacts")
+      .select("id, email_jsonb")
+      .in("id", halted.contactIds);
+    for (const row of idRows ?? []) {
+      const ej = Array.isArray((row as { email_jsonb: unknown }).email_jsonb)
+        ? (row as { email_jsonb: unknown[] }).email_jsonb
+        : [];
+      for (const e of ej) {
+        const em =
+          e && typeof e === "object" ? (e as Record<string, unknown>).email : e;
+        if (typeof em === "string" && em.includes("@")) {
+          await supabaseAdmin.from("email_suppressions").upsert(
+            {
+              email: em.trim().toLowerCase(),
+              reason: "sms_stop",
+              contact_id: (row as { id: number }).id,
+            },
+            { onConflict: "email" },
+          );
+        }
+      }
+    }
     return ok();
   }
 
-  // They replied -> stop the nurture chase (texts AND the double-dial cadence:
-  // the live conversation owns them now), then let the agent respond.
-  await supabaseAdmin
-    .from("scheduled_tasks")
-    .update({ status: "canceled", updated_at: new Date().toISOString() })
-    .eq("contact_id", contactId)
-    .eq("status", "pending")
-    .in("task_type", ["nurture_sms", "speed_to_lead_sms", "call_task"]);
+  // They replied -> ALL automated follow-up stops (texts, drip emails, and the
+  // double-dial cadence - the live conversation owns them now), identity-wide.
+  // Then notify the human (5-minute-response SLA) and let the agent respond.
+  await haltFollowup({ contactId, reason: "sms_reply" });
+  await notifyLeadReplied({ contactId, channel: "sms", preview: text });
 
   // Global pause: the inbound text is logged above (CRM timeline + transcript),
-  // but the AI agent does NOT auto-reply. A human handles it from OpenPhone/CRM.
+  // but the AI agent does NOT auto-reply. The lead_replied notification above
+  // means a human still hears about it instead of the reply sitting unanswered.
   if (await salesSendsPaused()) {
     console.info("[quo_inbound] sends paused — logged inbound, no AI reply");
     return ok();

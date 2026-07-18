@@ -56,6 +56,11 @@ const describe = (n: Notification): { text: string; to: string } => {
         text: `Lead handed to you: ${String(p.summary ?? p.reason ?? "check the deal")}`,
         to: `/contacts/${String(p.contact_id ?? "")}/show`,
       };
+    case "lead_replied":
+      return {
+        text: `Lead replied by ${String(p.channel ?? "message")} — respond within 5 min${p.preview ? `: "${String(p.preview).slice(0, 60)}"` : ""}`,
+        to: `/contacts/${String(p.contact_id ?? "")}/show`,
+      };
     default:
       return { text: "Notification", to: "/" };
   }
@@ -77,9 +82,7 @@ export const NotificationsBell = () => {
 
   const { mutate: markAllRead } = useMutation({
     mutationFn: async () => {
-      const unreadIds = list
-        .filter((n) => !n.read_at)
-        .map((n) => n.id);
+      const unreadIds = list.filter((n) => !n.read_at).map((n) => n.id);
       if (unreadIds.length === 0) return;
       const now = new Date().toISOString();
       await Promise.all(

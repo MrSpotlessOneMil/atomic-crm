@@ -217,7 +217,8 @@ export type NotificationType =
   | "payout_paid"
   | "booking_created"
   | "agent_handoff"
-  | "call_due";
+  | "call_due"
+  | "lead_replied";
 
 export type Notification = {
   sales_id: Identifier;
@@ -235,11 +236,7 @@ export type RepAvailability = {
   created_at: string;
 } & Pick<RaRecord, "id">;
 
-export type BookingStatus =
-  | "scheduled"
-  | "completed"
-  | "canceled"
-  | "no_show";
+export type BookingStatus = "scheduled" | "completed" | "canceled" | "no_show";
 
 export type Booking = {
   sales_id: Identifier;

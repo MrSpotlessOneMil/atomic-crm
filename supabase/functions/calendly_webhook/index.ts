@@ -14,11 +14,18 @@ import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
 import { toE164, salesSendsPaused } from "../_shared/quoSales.ts";
-import { REMINDERS, render } from "../_shared/salesCopy.ts";
 import { assignToCloser } from "../_shared/handoff.ts";
 import { recordBooking, cancelBooking } from "../_shared/bookings.ts";
+import { scheduleDemoReminders } from "../_shared/demoReminders.ts";
 
-const ACTIVE_STAGES = ["lead", "contacted", "demo-booked", "demo-done", "proposal-sent", "in-negociation"];
+const ACTIVE_STAGES = [
+  "lead",
+  "contacted",
+  "demo-booked",
+  "demo-done",
+  "proposal-sent",
+  "in-negociation",
+];
 const repName = () => Deno.env.get("SALES_AGENT_NAME") || "Robin";
 const tz = () => Deno.env.get("QUIET_HOURS_TZ") || "America/New_York";
 
@@ -35,11 +42,21 @@ async function hmacHex(key: string, data: string): Promise<string> {
     false,
     ["sign"],
   );
-  const sig = await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(data));
-  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const sig = await crypto.subtle.sign(
+    "HMAC",
+    k,
+    new TextEncoder().encode(data),
+  );
+  return [...new Uint8Array(sig)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
-async function verify(raw: string, header: string | null, key: string): Promise<boolean> {
+async function verify(
+  raw: string,
+  header: string | null,
+  key: string,
+): Promise<boolean> {
   if (!header) return false;
   const fields = Object.fromEntries(
     header.split(",").map((p) => {
@@ -53,7 +70,8 @@ async function verify(raw: string, header: string | null, key: string): Promise<
   const expected = await hmacHex(key, `${t}.${raw}`);
   if (expected.length !== v1.length) return false;
   let diff = 0;
-  for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ v1.charCodeAt(i);
+  for (let i = 0; i < expected.length; i++)
+    diff |= expected.charCodeAt(i) ^ v1.charCodeAt(i);
   return diff === 0;
 }
 
@@ -72,13 +90,24 @@ function fmtDemoTime(startIso: string): string {
   }
 }
 
-async function findContact(email: string, phone: string): Promise<number | null> {
+async function findContact(
+  email: string,
+  phone: string,
+): Promise<number | null> {
   if (email) {
-    const { data } = await supabaseAdmin.from("contacts").select("id").contains("email_jsonb", [{ email }]).limit(1);
+    const { data } = await supabaseAdmin
+      .from("contacts")
+      .select("id")
+      .contains("email_jsonb", [{ email }])
+      .limit(1);
     if (data && data[0]) return data[0].id;
   }
   if (phone) {
-    const { data } = await supabaseAdmin.from("contacts").select("id").contains("phone_jsonb", [{ number: phone }]).limit(1);
+    const { data } = await supabaseAdmin
+      .from("contacts")
+      .select("id")
+      .contains("phone_jsonb", [{ number: phone }])
+      .limit(1);
     if (data && data[0]) return data[0].id;
   }
   return null;
@@ -95,13 +124,16 @@ async function openDeal(contactId: number): Promise<number | null> {
 }
 
 const handle = async (req: Request) => {
-  if (req.method !== "POST") return createErrorResponse(405, "Method Not Allowed");
+  if (req.method !== "POST")
+    return createErrorResponse(405, "Method Not Allowed");
 
   const key = Deno.env.get("CALENDLY_WEBHOOK_SIGNING_KEY");
   if (!key) return createErrorResponse(503, "Calendly webhook not configured");
 
   const raw = await req.text();
-  if (!(await verify(raw, req.headers.get("Calendly-Webhook-Signature"), key))) {
+  if (
+    !(await verify(raw, req.headers.get("Calendly-Webhook-Signature"), key))
+  ) {
     return createErrorResponse(401, "Bad signature");
   }
 
@@ -120,8 +152,12 @@ const handle = async (req: Request) => {
   const paused = await salesSendsPaused();
 
   const p = evt?.payload ?? {};
-  const email = String(p.email ?? "").toLowerCase().trim();
-  const phone = toE164(String(p.text_reminder_number ?? p.sms_reminder_number ?? ""));
+  const email = String(p.email ?? "")
+    .toLowerCase()
+    .trim();
+  const phone = toE164(
+    String(p.text_reminder_number ?? p.sms_reminder_number ?? ""),
+  );
   const name = String(p.name ?? "").trim();
   const start = p.scheduled_event?.start_time ?? p.event?.start_time ?? null;
   const end = p.scheduled_event?.end_time ?? null;
@@ -158,18 +194,34 @@ const handle = async (req: Request) => {
   // dispatch with "no phone for task".
   let hasPhone = !!phone;
   if (!hasPhone) {
-    const { data: c } = await supabaseAdmin.from("contacts").select("phone_jsonb").eq("id", contactId).maybeSingle();
+    const { data: c } = await supabaseAdmin
+      .from("contacts")
+      .select("phone_jsonb")
+      .eq("id", contactId)
+      .maybeSingle();
     const pj = c?.phone_jsonb;
-    hasPhone = Array.isArray(pj) && pj.some((e: any) =>
-      (typeof e === "string" && e.trim()) ||
-      (e && typeof e === "object" && typeof e.number === "string" && e.number.trim()));
+    hasPhone =
+      Array.isArray(pj) &&
+      pj.some(
+        (e: any) =>
+          (typeof e === "string" && e.trim()) ||
+          (e &&
+            typeof e === "object" &&
+            typeof e.number === "string" &&
+            e.number.trim()),
+      );
   }
 
   let dealId = await openDeal(contactId);
   if (!dealId && kind === "invitee.created") {
     const d = await supabaseAdmin
       .from("deals")
-      .insert({ name: name || `Demo ${email || phone}`, stage: "lead", category: "inbound", contact_ids: [contactId] })
+      .insert({
+        name: name || `Demo ${email || phone}`,
+        stage: "lead",
+        category: "inbound",
+        contact_ids: [contactId],
+      })
       .select("id")
       .single();
     if (!d.error) dealId = d.data.id;
@@ -177,7 +229,10 @@ const handle = async (req: Request) => {
 
   if (kind === "invitee.canceled") {
     if (dealId) {
-      await supabaseAdmin.from("deals").update({ stage: "contacted", updated_at: new Date().toISOString() }).eq("id", dealId);
+      await supabaseAdmin
+        .from("deals")
+        .update({ stage: "contacted", updated_at: new Date().toISOString() })
+        .eq("id", dealId);
     }
     // Drop pending reminders + no-show check for this contact.
     await supabaseAdmin
@@ -190,13 +245,23 @@ const handle = async (req: Request) => {
     if (contactId) await cancelBooking({ contactId });
     // One gentle rebook nudge in ~2h (SMS-only; skipped while sends paused or no phone).
     if (!paused && hasPhone) {
-      const calendly = (await supabaseAdmin.from("integration_secrets").select("value").eq("key", "CALENDLY_BOOKING_URL").single()).data?.value
-        ?? "https://calendly.com/dominic-theosirisai/cleaning-gameplan";
+      const calendly =
+        (
+          await supabaseAdmin
+            .from("integration_secrets")
+            .select("value")
+            .eq("key", "CALENDLY_BOOKING_URL")
+            .single()
+        ).data?.value ??
+        "https://calendly.com/dominic-theosirisai/cleaning-gameplan";
       await supabaseAdmin.from("scheduled_tasks").insert({
         task_type: "nurture_sms",
         contact_id: contactId,
         deal_id: dealId,
-        payload: { content: `no worries {{first_name}}, want to grab another time for the robin line demo? ${calendly}`, key: "rebook" },
+        payload: {
+          content: `no worries {{first_name}}, want to grab another time for the robin line demo? ${calendly}`,
+          key: "rebook",
+        },
         run_at: new Date(Date.now() + 2 * 3600_000).toISOString(),
       });
     }
@@ -225,7 +290,12 @@ const handle = async (req: Request) => {
       })
       .eq("id", dealId);
     // Hand the booked demo to the closer (they run it + earn the commission).
-    await assignToCloser({ dealId, contactId, reason: "demo_booked", summary: `Demo booked for ${fmtDemoTime(start)}` });
+    await assignToCloser({
+      dealId,
+      contactId,
+      reason: "demo_booked",
+      summary: `Demo booked for ${fmtDemoTime(start)}`,
+    });
   }
 
   // Mirror the booked demo into the bookings table (rep /bookings + weekly
@@ -246,31 +316,22 @@ const handle = async (req: Request) => {
     .eq("contact_id", contactId)
     .eq("status", "pending");
 
-  // Reminder + no-show texting is skipped while sends are paused or when the
-  // contact has no phone; the deal is still moved to demo-booked + handed off.
-  if (!paused && hasPhone) {
-    const vars = { rep_name: repName(), demo_time: fmtDemoTime(start), join_link: joinLink || "" };
-    const reminderRows = REMINDERS.map((r) => ({
-      task_type: "reminder_sms",
-      contact_id: contactId,
-      deal_id: dealId,
-      payload: { content: render(r.template, vars), key: r.key, skip_after: new Date(startMs).toISOString() },
-      run_at: new Date(startMs - r.minutesBefore * 60_000).toISOString(),
-    })).filter((row) => Date.parse(row.run_at) > Date.now() - 60_000); // skip already-past reminders
-
-    // No-show check just after the demo ends.
-    reminderRows.push({
-      task_type: "no_show_check",
-      contact_id: contactId,
-      deal_id: dealId,
-      payload: { key: "no_show", demo_at: start } as Record<string, unknown>,
-      run_at: new Date(endMs).toISOString(),
-    } as (typeof reminderRows)[number]);
-
-    if (reminderRows.length) {
-      const r = await supabaseAdmin.from("scheduled_tasks").insert(reminderRows);
-      if (r.error) console.error("[calendly_webhook] reminder enqueue failed", r.error);
-    }
+  // Full show-rate stack (instant confirmation, 24h/12h/3h/1h reminders,
+  // no-show check, pull-forward call for far-out bookings, night-before rep
+  // prompt) — shared with every other booking path via demoReminders.ts.
+  // Enqueued even while sends are paused (the dispatcher HOLDS the queue and
+  // flushes on resume); skipped only when the contact has no phone. The
+  // invitee's own Calendly timezone wins so times read in THEIR clock.
+  if (hasPhone) {
+    await scheduleDemoReminders({
+      contactId,
+      dealId,
+      startISO: start,
+      durationMinutes: Math.max(15, Math.round((endMs - startMs) / 60_000)),
+      joinUrl: joinLink || null,
+      timeZone:
+        typeof p.timezone === "string" && p.timezone ? p.timezone : undefined,
+    });
   }
 
   await supabaseAdmin.from("contact_notes").insert({

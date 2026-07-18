@@ -17,7 +17,10 @@ import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
 import { toE164 } from "../_shared/quoSales.ts";
 import { enrollLeadCadence, ensureOpenDeal } from "../_shared/enrollment.ts";
-import { sanitizeAttribution, mergeAttribution } from "../_shared/attribution.ts";
+import {
+  sanitizeAttribution,
+  mergeAttribution,
+} from "../_shared/attribution.ts";
 import { normalizeLeadSource } from "../_shared/leadPlaybooks.ts";
 
 type Body = {
@@ -31,8 +34,12 @@ type Body = {
   platform?: string; // instagram / tiktok / facebook
   source?: string; // alias for platform (website forms often send "source")
   lead_magnet?: string; // readable name of the magnet they grabbed
+  language?: string; // "es"/"spanish"/"español" -> Spanish drip end-to-end
   attribution?: Record<string, unknown>; // which ad/utm/offer brought them (whitelisted)
 };
+
+const parseLanguage = (raw: unknown): "en" | "es" =>
+  typeof raw === "string" && /^es|spanish|espa/i.test(raw.trim()) ? "es" : "en";
 
 const trim = (s: unknown, max = 200): string =>
   typeof s === "string" ? s.trim().slice(0, max) : "";
@@ -56,11 +63,13 @@ async function findContactByEmail(email: string): Promise<number | null> {
 }
 
 const handle = async (req: Request) => {
-  if (req.method !== "POST") return createErrorResponse(405, "Method Not Allowed");
+  if (req.method !== "POST")
+    return createErrorResponse(405, "Method Not Allowed");
 
   const expected = Deno.env.get("LEAD_INBOUND_SECRET");
   const provided = req.headers.get("X-LEAD-SECRET");
-  if (!expected || provided !== expected) return createErrorResponse(401, "Unauthorized");
+  if (!expected || provided !== expected)
+    return createErrorResponse(401, "Unauthorized");
 
   let body: Body;
   try {
@@ -76,7 +85,17 @@ const handle = async (req: Request) => {
   const business = trim(body.business_name || body.ig_username, 120);
   const sourceRaw = trim(body.platform || body.source, 40) || "inbound";
   const source = normalizeLeadSource(sourceRaw);
-  const magnet = trim(body.lead_magnet, 60);
+  // The magnet name reaches the LEAD verbatim inside the opener - strip
+  // internal tracking suffixes ("Full Guide — Partial (no phone)") before it
+  // can leak into a text.
+  const magnet = trim(body.lead_magnet, 60).replace(
+    /\s*[—–-]+\s*partial.*$/i,
+    "",
+  );
+  const language = parseLanguage(
+    body.language ??
+      (body.attribution as Record<string, unknown> | undefined)?.language,
+  );
 
   // Attribution: whitelist whatever the caller knows (ad ids from meta_leads,
   // utm/click ids from the website, keyword from ManyChat) and make sure the
@@ -86,11 +105,16 @@ const handle = async (req: Request) => {
   const keyword = trim(body.keyword, 40);
   if (keyword && !attribution.keyword) attribution.keyword = keyword;
   if (!attribution.platform) attribution.platform = source;
-  if (!attribution.first_touch_at) attribution.first_touch_at = new Date().toISOString();
+  if (!attribution.first_touch_at)
+    attribution.first_touch_at = new Date().toISOString();
+  // Language sticks to the contact so later re-touches (orphan sweep, manual
+  // re-sends) stay in the lead's language.
+  if (language === "es" && !attribution.language) attribution.language = "es";
 
   // Need at least one channel to work the lead: phone (SMS funnel) or email
   // (warm email drip). Email-only opt-ins are now captured too.
-  if (!e164 && !email) return createErrorResponse(400, "phone or email required");
+  if (!e164 && !email)
+    return createErrorResponse(400, "phone or email required");
 
   // Find or create the contact. Dedupe by phone FIRST, then fall back to email,
   // so a repeat opt-in that arrives on a different channel (or whose phone
@@ -100,18 +124,34 @@ const handle = async (req: Request) => {
   if (!contactId && email) contactId = await findContactByEmail(email);
   if (contactId) {
     // First-touch attribution wins: existing keys stay, new keys fill gaps.
+    // Channels MERGE: the partial-then-full flow matches by email but arrives
+    // with a NEW phone — without storing it, the call cadence bridges with
+    // "no phone" and every phone-keyed identity halt misses this contact.
     const { data: existing } = await supabaseAdmin
       .from("contacts")
-      .select("attribution")
+      .select("attribution, phone_jsonb, email_jsonb")
       .eq("id", contactId)
       .maybeSingle();
-    await supabaseAdmin
-      .from("contacts")
-      .update({
-        last_seen: new Date().toISOString(),
-        attribution: mergeAttribution(existing?.attribution, attribution),
-      })
-      .eq("id", contactId);
+    const patch: Record<string, unknown> = {
+      last_seen: new Date().toISOString(),
+      attribution: mergeAttribution(existing?.attribution, attribution),
+    };
+    const hasEntry = (arr: unknown, key: string) =>
+      Array.isArray(arr) &&
+      arr.some(
+        (e) =>
+          e &&
+          typeof e === "object" &&
+          typeof (e as Record<string, unknown>)[key] === "string" &&
+          String((e as Record<string, unknown>)[key]).trim(),
+      );
+    if (e164 && !hasEntry(existing?.phone_jsonb, "number")) {
+      patch.phone_jsonb = [{ number: e164, type: "Mobile" }];
+    }
+    if (email && !hasEntry(existing?.email_jsonb, "email")) {
+      patch.email_jsonb = [{ email, type: "Work" }];
+    }
+    await supabaseAdmin.from("contacts").update(patch).eq("id", contactId);
   } else {
     const ins = await supabaseAdmin
       .from("contacts")
@@ -138,14 +178,26 @@ const handle = async (req: Request) => {
   // Optional company from the business name / handle.
   let companyId: number | null = null;
   if (business) {
-    const { data: existing } = await supabaseAdmin.from("companies").select("id").ilike("name", business).limit(1);
+    const { data: existing } = await supabaseAdmin
+      .from("companies")
+      .select("id")
+      .ilike("name", business)
+      .limit(1);
     if (existing && existing[0]) {
       companyId = existing[0].id;
     } else {
-      const c = await supabaseAdmin.from("companies").insert({ name: business }).select("id").single();
+      const c = await supabaseAdmin
+        .from("companies")
+        .insert({ name: business })
+        .select("id")
+        .single();
       if (!c.error) companyId = c.data.id;
     }
-    if (companyId) await supabaseAdmin.from("contacts").update({ company_id: companyId }).eq("id", contactId);
+    if (companyId)
+      await supabaseAdmin
+        .from("contacts")
+        .update({ company_id: companyId })
+        .eq("id", contactId);
   }
 
   // Find or create an open deal at stage 'lead'.
@@ -167,10 +219,16 @@ const handle = async (req: Request) => {
     magnet,
     e164,
     email,
+    language,
   });
 
   return new Response(
-    JSON.stringify({ ok: true, contact_id: contactId, deal_id: dealId, enqueued: result.enqueued }),
+    JSON.stringify({
+      ok: true,
+      contact_id: contactId,
+      deal_id: dealId,
+      enqueued: result.enqueued,
+    }),
     { headers: { "Content-Type": "application/json", ...corsHeaders } },
   );
 };

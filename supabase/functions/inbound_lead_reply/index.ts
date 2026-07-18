@@ -13,6 +13,7 @@
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
+import { haltFollowup, notifyLeadReplied } from "../_shared/haltFollowup.ts";
 
 const webhookUser = Deno.env.get("POSTMARK_WEBHOOK_USER");
 const webhookPassword = Deno.env.get("POSTMARK_WEBHOOK_PASSWORD");
@@ -26,8 +27,7 @@ const allowedIPs = (Deno.env.get("POSTMARK_WEBHOOK_AUTHORIZED_IPS") ?? "")
   .map((s) => s.trim())
   .filter(Boolean);
 
-const expectedAuth =
-  "Basic " + btoa(`${webhookUser}:${webhookPassword}`);
+const expectedAuth = "Basic " + btoa(`${webhookUser}:${webhookPassword}`);
 
 type PostmarkInbound = {
   From?: string;
@@ -101,18 +101,28 @@ const handle = async (req: Request) => {
     return new Response("No matching rep", { status: 403 });
   }
 
-  // Locate the contact under that rep by email; create a stub contact if
-  // none exists.
+  // Locate the contact by email — prefer the rep's own contact, else ANY
+  // contact with this email (an automated drip email may be answered to a rep
+  // who doesn't own the record; a stub duplicate here would leave the real
+  // contact's cadence running). Create a stub only when nobody matches.
   const { data: existing } = await supabaseAdmin
     .from("contacts")
     .select("id, sales_id")
     .eq("sales_id", rep.id)
     .contains("email_jsonb", [{ email: fromEmail }])
     .limit(1);
+  const { data: anyMatch } =
+    existing && existing.length > 0
+      ? { data: existing }
+      : await supabaseAdmin
+          .from("contacts")
+          .select("id, sales_id")
+          .contains("email_jsonb", [{ email: fromEmail }])
+          .limit(1);
 
   let contactId: number;
-  if (existing && existing.length > 0) {
-    contactId = existing[0].id as number;
+  if (anyMatch && anyMatch.length > 0) {
+    contactId = anyMatch[0].id as number;
   } else {
     const name = (fromName || "").trim();
     const [first, ...rest] = name.split(/\s+/);
@@ -141,19 +151,52 @@ const handle = async (req: Request) => {
   const noteHeader = body.Subject ? `Subject: ${body.Subject}\n\n` : "";
   const noteBody = `${noteHeader}${cleanText}`.slice(0, 8000);
 
-  const { error: noteErr } = await supabaseAdmin
-    .from("contact_notes")
-    .insert({
-      contact_id: contactId,
-      text: noteBody,
-      date: new Date().toISOString(),
-      sales_id: rep.id,
-      status: "warm",
-    });
+  const { error: noteErr } = await supabaseAdmin.from("contact_notes").insert({
+    contact_id: contactId,
+    text: noteBody,
+    date: new Date().toISOString(),
+    sales_id: rep.id,
+    status: "warm",
+  });
   if (noteErr) {
     console.error("inbound_lead_reply: note insert failed", noteErr);
     return new Response("Internal error", { status: 500 });
   }
+
+  // A short stop/unsubscribe reply = opt out of email, machine-enforced (the
+  // drip footer promises it).
+  if (
+    cleanText.length < 120 &&
+    /\b(stop|unsubscribe|remove me|no more emails?)\b/i.test(cleanText)
+  ) {
+    await supabaseAdmin
+      .from("email_suppressions")
+      .upsert(
+        { email: fromEmail, reason: "email_stop", contact_id: contactId },
+        { onConflict: "email" },
+      );
+  }
+
+  // An email reply IS a response: every automated touch stops, identity-wide
+  // (texts, remaining drip emails, CALL NOW queue), and the rep is pinged to
+  // answer within minutes. Transcript marker keeps the AI agent + the
+  // dispatcher's replied-backstop + enroll_orphans aware of the conversation.
+  try {
+    await supabaseAdmin.from("agent_messages").insert({
+      contact_id: contactId,
+      deal_id: null,
+      direction: "inbound",
+      body: `[email] ${body.Subject ?? ""}\n${cleanText}`.slice(0, 4000),
+    });
+  } catch {
+    /* transcript only */
+  }
+  await haltFollowup({ contactId, reason: "email_reply" });
+  await notifyLeadReplied({
+    contactId,
+    channel: "email",
+    preview: cleanText || body.Subject || "",
+  });
 
   return new Response(JSON.stringify({ ok: true, contact_id: contactId }), {
     headers: { "Content-Type": "application/json" },

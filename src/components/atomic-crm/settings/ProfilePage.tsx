@@ -102,7 +102,9 @@ export const ProfilePage = () => {
       />
       <QuoNumberCard
         current={data?.quo_phone}
-        onSave={(quo_phone) => mutate({ ...(data as SalesFormData), quo_phone })}
+        onSave={(quo_phone) =>
+          mutate({ ...(data as SalesFormData), quo_phone })
+        }
       />
       <GmailConnectCard
         connected={!!(data as { gmail_connected?: boolean })?.gmail_connected}
@@ -223,7 +225,9 @@ const GmailConnectCard = ({
       "scope",
       // calendar.events (write) lets the AI agent CREATE demo events + invites;
       // calendar.readonly stays for free/busy + the gcal poller.
-      "openid email https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly",
+      // gmail.readonly powers the reply scan (gmail_reply_scan): a lead reply
+      // in this inbox halts ALL automated follow-up for that lead.
+      "openid email https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly",
     );
     url.searchParams.set("access_type", "offline");
     url.searchParams.set("prompt", "consent");
@@ -247,7 +251,11 @@ const GmailConnectCard = ({
             CRM as yourself — every email logged automatically.
           </p>
         )}
-        <Button type="button" onClick={connect} variant={connected ? "outline" : "default"}>
+        <Button
+          type="button"
+          onClick={connect}
+          variant={connected ? "outline" : "default"}
+        >
           <Mail className="w-4 h-4 mr-2" />
           {connected ? "Reconnect Gmail" : "Connect Gmail"}
         </Button>

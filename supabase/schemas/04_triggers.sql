@@ -33,6 +33,14 @@ create or replace trigger company_saved
     before insert or update on public.companies
     for each row execute function public.handle_company_saved();
 
+-- Normalize every phone number to E.164 (identity matching, suppressions, and
+-- the stop-on-reply halt all key off exact E.164 containment). "05_" so it
+-- fires before the email/avatar triggers (same-event triggers fire in name
+-- order).
+create or replace trigger "05_normalize_contact_phones"
+    before insert or update on public.contacts
+    for each row execute function public.normalize_contact_phones();
+
 -- Lowercase contact emails before insert or update (must run before contact_saved)
 create or replace trigger "10_lowercase_contact_emails"
     before insert or update on public.contacts
