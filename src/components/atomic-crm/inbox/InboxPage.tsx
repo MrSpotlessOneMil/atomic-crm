@@ -30,7 +30,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { CrmDataProvider } from "../providers/types";
 import { getSupabaseClient } from "../providers/supabase/supabase";
-import type { Company } from "../types";
+import type { Company, Contact } from "../types";
 import { toE164 } from "../misc/phone";
 import { formatRelativeDate } from "../misc/RelativeDate";
 import { ensureContactForCompany } from "../companies/ensureContact";
@@ -50,9 +50,27 @@ type Convo = {
   lastActivityAt: string | null;
 };
 
-// A row shown in the inbox list: a matched company (if we have one) plus the
-// conversation's last-activity time so we can sort newest-first like Quo.
-type Row = { company: Company; lastActivityAt: string | null };
+// A textable lead in the inbox: a CRM contact, a CRM company, or an OpenPhone
+// number not yet in the CRM (a "quo-" id). `phone_number` is what the
+// Conversation loads/sends on; `crmPath` links to the record; contactId /
+// companyId let reminders attach to the right row. `_blob` / `_digits` are the
+// lowercased name+phone+email haystack the search filters against.
+type Lead = {
+  id: string;
+  name: string;
+  phone_number: string;
+  crmPath?: string;
+  contactId?: number;
+  companyId?: number;
+  _blob?: string;
+  _digits?: string;
+};
+
+// A row shown in the inbox list: a lead plus the conversation's last-activity
+// time so we can sort newest-first like Quo.
+type Row = { lead: Lead; lastActivityAt: string | null };
+
+const onlyDigits = (s?: string | null) => (s ?? "").replace(/\D/g, "");
 
 type Message = {
   id: string;
@@ -80,19 +98,28 @@ export const InboxPage = () => {
   const dataProvider = useDataProvider<CrmDataProvider>();
   const [locale = "en"] = useLocaleState();
   const [q, setQ] = useState("");
-  const [selected, setSelected] = useState<Company | null>(null);
+  const [selected, setSelected] = useState<Lead | null>(null);
   // null = still loading; [] = loaded but no threads / unavailable.
   const [convos, setConvos] = useState<Convo[] | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const startNewMessage = () => searchRef.current?.focus();
 
-  // All leads — used both to put a name/face on each conversation and to let the
-  // rep search for any lead to start a fresh thread.
+  // Every textable lead comes from TWO tables: contacts (what the funnel
+  // creates) and companies. The inbox is contact-first — a rep searching a
+  // name/number/email needs to find the contact, not just a company that
+  // happens to share the number.
   const { data: companies, refetch: refetchCompanies } = useGetList<Company>(
     "companies",
     {
       pagination: { page: 1, perPage: 1000 },
       sort: { field: "name", order: "ASC" },
+    },
+  );
+  const { data: contacts, refetch: refetchContacts } = useGetList<Contact>(
+    "contacts",
+    {
+      pagination: { page: 1, perPage: 1000 },
+      sort: { field: "last_seen", order: "DESC" },
     },
   );
 
@@ -113,48 +140,92 @@ export const InboxPage = () => {
     return () => markInboxViewed();
   }, []);
 
-  // Phone → company lookup so a conversation can show the company name.
-  const byPhone = useMemo(() => {
-    const m = new Map<string, Company>();
-    (companies ?? []).forEach((c) => {
-      const p = toE164(c.phone_number);
-      if (p) m.set(p, c);
-    });
-    return m;
-  }, [companies]);
+  // Unified textable-lead list: contacts first (deduped by E.164 so several
+  // rows on one number collapse to the most-recent one), then any company whose
+  // number a contact didn't already cover. Each lead carries a search haystack.
+  const allLeads = useMemo<Lead[]>(() => {
+    const list: Lead[] = [];
+    const seen = new Set<string>();
+    for (const c of contacts ?? []) {
+      const numbers = (c.phone_jsonb ?? [])
+        .map((p) => p?.number)
+        .filter((n): n is string => !!n);
+      if (!numbers.length) continue; // the inbox is for texting; skip no-phone
+      const e164 = toE164(numbers[0]);
+      if (e164 && seen.has(e164)) continue;
+      const name =
+        `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() || e164 || "Lead";
+      const emails = (c.email_jsonb ?? [])
+        .map((e) => e?.email)
+        .filter((e): e is string => !!e);
+      list.push({
+        id: `contact-${c.id}`,
+        name,
+        phone_number: e164 || numbers[0],
+        crmPath: `/contacts/${c.id}/show`,
+        contactId: Number(c.id),
+        _blob: [name, ...numbers, ...emails].join(" ").toLowerCase(),
+        _digits: numbers.map(onlyDigits).join(" "),
+      });
+      if (e164) seen.add(e164);
+    }
+    for (const co of companies ?? []) {
+      const e164 = toE164(co.phone_number);
+      if (e164 && seen.has(e164)) continue;
+      const name = co.name || e164 || "Lead";
+      list.push({
+        id: `company-${co.id}`,
+        name,
+        phone_number: co.phone_number || e164,
+        crmPath: `/companies/${co.id}/show`,
+        companyId: Number(co.id),
+        _blob: `${name} ${co.phone_number ?? ""}`.toLowerCase(),
+        _digits: onlyDigits(co.phone_number),
+      });
+      if (e164) seen.add(e164);
+    }
+    return list;
+  }, [contacts, companies]);
 
-  // Build the list to render. Searching looks across every lead (start a new
-  // thread); otherwise we show real conversations, newest-first like Quo.
+  // Phone → lead lookup so a live OpenPhone conversation shows the lead's name.
+  const byPhone = useMemo(() => {
+    const m = new Map<string, Lead>();
+    for (const l of allLeads) {
+      const p = toE164(l.phone_number);
+      if (p && !m.has(p)) m.set(p, l);
+    }
+    return m;
+  }, [allLeads]);
+
+  // Build the list to render. Searching matches ANY lead by name, phone (any
+  // format), or email; otherwise we show real conversations, newest-first.
   const query = q.trim().toLowerCase();
+  const qDigits = onlyDigits(query);
   let rows: Row[] = [];
   if (query) {
-    rows = (companies ?? [])
+    rows = allLeads
       .filter(
-        (c) =>
-          c.name?.toLowerCase().includes(query) ||
-          (c.phone_number ?? "").replace(/\D/g, "").includes(query.replace(/\D/g, "")),
+        (l) =>
+          (l._blob ?? "").includes(query) ||
+          (qDigits.length >= 3 && (l._digits ?? "").includes(qDigits)),
       )
       .slice(0, 100)
-      .map((c) => ({ company: c, lastActivityAt: null }));
+      .map((l) => ({ lead: l, lastActivityAt: null }));
   } else if (convos && convos.length) {
     rows = convos.map((cv) => {
-      const matched = byPhone.get(toE164(cv.phone));
-      const company =
-        matched ??
-        ({
-          id: `quo-${cv.phone}`,
-          name: cv.name || cv.phone,
-          phone_number: cv.phone,
-        } as unknown as Company);
-      return { company, lastActivityAt: cv.lastActivityAt };
+      const lead: Lead = byPhone.get(toE164(cv.phone)) ?? {
+        id: `quo-${cv.phone}`,
+        name: cv.name || cv.phone,
+        phone_number: cv.phone,
+      };
+      return { lead, lastActivityAt: cv.lastActivityAt };
     });
   } else if (convos) {
     // No conversations yet (or Quo unavailable) — fall back to the lead list so
     // the rep can still start the first message.
-    rows = (companies ?? [])
-      .filter((c) => c.phone_number)
+    rows = allLeads
       .slice(0, 100)
-      .map((c) => ({ company: c, lastActivityAt: null }));
+      .map((l) => ({ lead: l, lastActivityAt: null }));
   }
 
   const loading = convos === null && !query;
@@ -192,7 +263,7 @@ export const InboxPage = () => {
               {query ? "No leads match." : "No conversations yet."}
             </div>
           ) : (
-            rows.map(({ company: c, lastActivityAt }) => (
+            rows.map(({ lead: c, lastActivityAt }) => (
               <button
                 key={c.id}
                 onClick={() => setSelected(c)}
@@ -235,12 +306,15 @@ export const InboxPage = () => {
             onLeadCreated={(c) => {
               setSelected(c);
               refetchCompanies();
+              refetchContacts();
             }}
           />
         ) : (
           <div className="m-auto text-center text-muted-foreground text-sm max-w-xs px-6">
             <SquarePen className="w-6 h-6 mx-auto mb-3 opacity-60" />
-            <p className="font-medium text-foreground">Start texting any lead</p>
+            <p className="font-medium text-foreground">
+              Start texting any lead
+            </p>
             <p className="mt-1">
               Pick a conversation on the left, or{" "}
               <button
@@ -280,22 +354,21 @@ const LeadAvatar = ({ name, size = 38 }: { name?: string; size?: number }) => (
   </span>
 );
 
-const ContactPanel = ({ company }: { company: Company }) => {
-  const isUnknown = String(company.id).startsWith("quo-");
+const ContactPanel = ({ company }: { company: Lead }) => {
   return (
     <aside className="w-72 border-l shrink-0 hidden lg:flex flex-col overflow-auto p-5">
       <div className="flex flex-col items-center text-center gap-2 pb-5 border-b">
         <LeadAvatar name={company.name} size={56} />
         <div className="font-bold leading-tight">{company.name}</div>
-        {isUnknown ? (
-          <span className="text-xs text-muted-foreground">Not in CRM yet</span>
-        ) : (
+        {company.crmPath ? (
           <Link
-            to={`/companies/${company.id}/show`}
+            to={company.crmPath}
             className="text-xs font-semibold underline text-foreground"
           >
             View lead in CRM →
           </Link>
+        ) : (
+          <span className="text-xs text-muted-foreground">Not in CRM yet</span>
         )}
       </div>
       <div className="mt-5">
@@ -303,8 +376,10 @@ const ContactPanel = ({ company }: { company: Company }) => {
           Contact
         </h3>
         <div className="flex justify-between gap-2 py-2 border-b text-sm">
-          <span className="text-muted-foreground">Company</span>
-          <span className="truncate max-w-[60%] text-right">{company.name}</span>
+          <span className="text-muted-foreground">Name</span>
+          <span className="truncate max-w-[60%] text-right">
+            {company.name}
+          </span>
         </div>
         <div className="flex justify-between gap-2 py-2 border-b text-sm">
           <span className="text-muted-foreground">Phone</span>
@@ -319,8 +394,8 @@ const Conversation = ({
   company,
   onLeadCreated,
 }: {
-  company: Company;
-  onLeadCreated?: (company: Company) => void;
+  company: Lead;
+  onLeadCreated?: (lead: Lead) => void;
 }) => {
   const dataProvider = useDataProvider<CrmDataProvider>();
   const { identity } = useGetIdentity();
@@ -341,22 +416,33 @@ const Conversation = ({
   const scheduleReminder = async (days: number) => {
     setReminding(true);
     try {
-      const contactId = await ensureContactForCompany({
-        companyId: company.id,
-        companyName: company.name ?? "Lead",
-        phone: company.phone_number,
-        salesId: identity?.id,
-      });
+      // A contact lead already IS a contact — attach directly. A company lead
+      // resolves (or creates) its contact. (Unknown "quo-" leads never show the
+      // Remind button, so contactId/companyId is always present here.)
+      const contactId =
+        company.contactId ??
+        (company.companyId
+          ? await ensureContactForCompany({
+              companyId: company.companyId,
+              companyName: company.name ?? "Lead",
+              phone: company.phone_number,
+              salesId: identity?.id,
+            })
+          : null);
+      if (contactId == null)
+        throw new Error("No lead to attach a reminder to.");
       const due = new Date();
       due.setDate(due.getDate() + days);
       due.setHours(9, 0, 0, 0);
-      await getSupabaseClient().from("tasks").insert({
-        contact_id: contactId,
-        type: "Follow-up",
-        text: `Follow up with ${company.name ?? "lead"}`,
-        due_date: due.toISOString(),
-        sales_id: identity?.id,
-      });
+      await getSupabaseClient()
+        .from("tasks")
+        .insert({
+          contact_id: contactId,
+          type: "Follow-up",
+          text: `Follow up with ${company.name ?? "lead"}`,
+          due_date: due.toISOString(),
+          sales_id: identity?.id,
+        });
       notify("Reminder set", { type: "success" });
       setRemindOpen(false);
     } catch (e) {
@@ -375,16 +461,25 @@ const Conversation = ({
     if (!leadName.trim()) return;
     setSaving(true);
     try {
-      const { data: created } = await dataProvider.create<Company>("companies", {
-        data: {
-          name: leadName.trim(),
-          phone_number: company.phone_number,
-          sales_id: identity?.id,
+      const { data: created } = await dataProvider.create<Company>(
+        "companies",
+        {
+          data: {
+            name: leadName.trim(),
+            phone_number: company.phone_number,
+            sales_id: identity?.id,
+          },
         },
-      });
+      );
       notify("Lead added", { type: "success" });
       setAddOpen(false);
-      onLeadCreated?.(created);
+      onLeadCreated?.({
+        id: `company-${created.id}`,
+        name: created.name,
+        phone_number: created.phone_number,
+        crmPath: `/companies/${created.id}/show`,
+        companyId: Number(created.id),
+      });
     } catch (e) {
       notify((e as Error).message ?? "Could not add lead", { type: "error" });
     } finally {
@@ -452,7 +547,9 @@ const Conversation = ({
     try {
       const convo =
         messages
-          .map((m) => `${m.direction === "incoming" ? "Them" : "Me"}: ${m.text}`)
+          .map(
+            (m) => `${m.direction === "incoming" ? "Them" : "Me"}: ${m.text}`,
+          )
           .join("\n") || "(no messages yet)";
       // Fold in every call transcript we have so the draft is grounded in what
       // was actually said on the phone, not just the texts.
