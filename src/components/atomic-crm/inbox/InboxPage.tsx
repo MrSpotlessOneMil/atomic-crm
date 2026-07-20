@@ -35,6 +35,7 @@ import { toE164 } from "../misc/phone";
 import { formatRelativeDate } from "../misc/RelativeDate";
 import { ensureContactForCompany } from "../companies/ensureContact";
 import { markInboxViewed } from "./useInboxUnread";
+import { buildLeads, filterLeads, type Lead } from "./leadSearch";
 
 const REMINDER_CHOICES: { label: string; days: number }[] = [
   { label: "Tomorrow", days: 1 },
@@ -50,27 +51,10 @@ type Convo = {
   lastActivityAt: string | null;
 };
 
-// A textable lead in the inbox: a CRM contact, a CRM company, or an OpenPhone
-// number not yet in the CRM (a "quo-" id). `phone_number` is what the
-// Conversation loads/sends on; `crmPath` links to the record; contactId /
-// companyId let reminders attach to the right row. `_blob` / `_digits` are the
-// lowercased name+phone+email haystack the search filters against.
-type Lead = {
-  id: string;
-  name: string;
-  phone_number: string;
-  crmPath?: string;
-  contactId?: number;
-  companyId?: number;
-  _blob?: string;
-  _digits?: string;
-};
-
 // A row shown in the inbox list: a lead plus the conversation's last-activity
-// time so we can sort newest-first like Quo.
+// time so we can sort newest-first like Quo. (Lead / search logic live in
+// ./leadSearch so they can be unit-tested.)
 type Row = { lead: Lead; lastActivityAt: string | null };
-
-const onlyDigits = (s?: string | null) => (s ?? "").replace(/\D/g, "");
 
 type Message = {
   id: string;
@@ -140,52 +124,12 @@ export const InboxPage = () => {
     return () => markInboxViewed();
   }, []);
 
-  // Unified textable-lead list: contacts first (deduped by E.164 so several
-  // rows on one number collapse to the most-recent one), then any company whose
-  // number a contact didn't already cover. Each lead carries a search haystack.
-  const allLeads = useMemo<Lead[]>(() => {
-    const list: Lead[] = [];
-    const seen = new Set<string>();
-    for (const c of contacts ?? []) {
-      const numbers = (c.phone_jsonb ?? [])
-        .map((p) => p?.number)
-        .filter((n): n is string => !!n);
-      if (!numbers.length) continue; // the inbox is for texting; skip no-phone
-      const e164 = toE164(numbers[0]);
-      if (e164 && seen.has(e164)) continue;
-      const name =
-        `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() || e164 || "Lead";
-      const emails = (c.email_jsonb ?? [])
-        .map((e) => e?.email)
-        .filter((e): e is string => !!e);
-      list.push({
-        id: `contact-${c.id}`,
-        name,
-        phone_number: e164 || numbers[0],
-        crmPath: `/contacts/${c.id}/show`,
-        contactId: Number(c.id),
-        _blob: [name, ...numbers, ...emails].join(" ").toLowerCase(),
-        _digits: numbers.map(onlyDigits).join(" "),
-      });
-      if (e164) seen.add(e164);
-    }
-    for (const co of companies ?? []) {
-      const e164 = toE164(co.phone_number);
-      if (e164 && seen.has(e164)) continue;
-      const name = co.name || e164 || "Lead";
-      list.push({
-        id: `company-${co.id}`,
-        name,
-        phone_number: co.phone_number || e164,
-        crmPath: `/companies/${co.id}/show`,
-        companyId: Number(co.id),
-        _blob: `${name} ${co.phone_number ?? ""}`.toLowerCase(),
-        _digits: onlyDigits(co.phone_number),
-      });
-      if (e164) seen.add(e164);
-    }
-    return list;
-  }, [contacts, companies]);
+  // Unified textable-lead list: contacts first (deduped by E.164), then any
+  // company whose number a contact didn't already cover. See ./leadSearch.
+  const allLeads = useMemo<Lead[]>(
+    () => buildLeads(contacts, companies),
+    [contacts, companies],
+  );
 
   // Phone → lead lookup so a live OpenPhone conversation shows the lead's name.
   const byPhone = useMemo(() => {
@@ -199,16 +143,10 @@ export const InboxPage = () => {
 
   // Build the list to render. Searching matches ANY lead by name, phone (any
   // format), or email; otherwise we show real conversations, newest-first.
-  const query = q.trim().toLowerCase();
-  const qDigits = onlyDigits(query);
+  const query = q.trim();
   let rows: Row[] = [];
   if (query) {
-    rows = allLeads
-      .filter(
-        (l) =>
-          (l._blob ?? "").includes(query) ||
-          (qDigits.length >= 3 && (l._digits ?? "").includes(qDigits)),
-      )
+    rows = filterLeads(allLeads, query)
       .slice(0, 100)
       .map((l) => ({ lead: l, lastActivityAt: null }));
   } else if (convos && convos.length) {
