@@ -50,6 +50,10 @@ create table public.contacts (
     linkedin_url text,
     email_jsonb jsonb,
     phone_jsonb jsonb,
+    -- Normalized (E.164) first phone number, maintained by the
+    -- normalize_contact_phones trigger. The dedup key: one source of truth per
+    -- phone number (see dedupe_contacts_by_phone).
+    primary_phone text,
     lead_source text,
     -- Which ad / video / offer / magnet / form brought them in (whitelisted
     -- keys - see functions/_shared/attribution.ts). First-touch wins on merge.
@@ -406,5 +410,6 @@ alter table only public.deal_notes
 
 create index contact_notes_contact_id_idx on public.contact_notes using btree (contact_id);
 create index contacts_company_id_idx on public.contacts using btree (company_id);
+create index contacts_primary_phone_idx on public.contacts using btree (primary_phone) where primary_phone is not null;
 create index deal_notes_deal_id_idx on public.deal_notes using btree (deal_id);
 create index deals_company_id_idx on public.deals using btree (company_id);
