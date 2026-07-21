@@ -241,6 +241,7 @@ export const InboxPage = () => {
           <Conversation
             key={selected.id}
             company={selected}
+            searchTerm={q}
             onLeadCreated={(c) => {
               setSelected(c);
               refetchCompanies();
@@ -331,9 +332,12 @@ const ContactPanel = ({ company }: { company: Lead }) => {
 const Conversation = ({
   company,
   onLeadCreated,
+  searchTerm,
 }: {
   company: Lead;
   onLeadCreated?: (lead: Lead) => void;
+  /** Active inbox search, if any — jumps to the first message that matches. */
+  searchTerm?: string;
 }) => {
   const dataProvider = useDataProvider<CrmDataProvider>();
   const { identity } = useGetIdentity();
@@ -347,9 +351,22 @@ const Conversation = ({
   const [suggesting, setSuggesting] = useState(false);
   const [remindOpen, setRemindOpen] = useState(false);
   const [reminding, setReminding] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const matchRef = useRef<HTMLDivElement>(null);
 
   // A synthetic row (an OpenPhone number not yet in the CRM) has a "quo-" id.
   const isUnknown = String(company.id).startsWith("quo-");
+
+  // The first message matching the active inbox search, if any — that's where
+  // we land instead of the bottom, so searching a phrase takes you to it.
+  const matchedMessageId = useMemo(() => {
+    const term = (searchTerm ?? "").trim().toLowerCase();
+    if (!term) return null;
+    return (
+      messages.find((m) => (m.text ?? "").toLowerCase().includes(term))?.id ??
+      null
+    );
+  }, [messages, searchTerm]);
 
   const scheduleReminder = async (days: number) => {
     setReminding(true);
@@ -462,6 +479,23 @@ const Conversation = ({
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [company.id]);
+
+  // Open a conversation at the BOTTOM (newest message), the way a texting app
+  // does — not at the top of a months-long history. When the rep got here from
+  // a search, land on the first matching message instead. rAF so the jump
+  // happens after the timeline has actually laid out.
+  useEffect(() => {
+    if (loading) return;
+    const raf = requestAnimationFrame(() => {
+      if (matchedMessageId && matchRef.current) {
+        matchRef.current.scrollIntoView({ block: "center" });
+        return;
+      }
+      const el = scrollRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [loading, timeline.length, matchedMessageId]);
 
   const send = async () => {
     if (!text.trim()) return;
@@ -577,7 +611,10 @@ const Conversation = ({
         </DialogContent>
       </Dialog>
 
-      <div className="flex-1 overflow-auto px-5 py-5 flex flex-col gap-1.5 bg-background">
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-auto px-5 py-5 flex flex-col gap-1.5 bg-background"
+      >
         {loading ? (
           <div className="flex justify-center py-6">
             <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
@@ -595,6 +632,7 @@ const Conversation = ({
             item.kind === "msg" ? (
               <div
                 key={item.msg.id}
+                ref={item.msg.id === matchedMessageId ? matchRef : undefined}
                 className={cn(
                   "flex w-full",
                   item.msg.direction === "outgoing"
@@ -608,6 +646,9 @@ const Conversation = ({
                     item.msg.direction === "outgoing"
                       ? "bg-gradient-to-b from-[#1f9dff] to-[#0a7aff] text-white rounded-br-md"
                       : "bg-muted text-foreground rounded-bl-md",
+                    // Show WHY we jumped here when the rep came from a search.
+                    item.msg.id === matchedMessageId &&
+                      "ring-2 ring-amber-400 ring-offset-2 ring-offset-background",
                   )}
                 >
                   {item.msg.text}

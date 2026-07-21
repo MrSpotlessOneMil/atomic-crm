@@ -232,3 +232,7 @@ verify_jwt = false
 verify_jwt = false
 [functions.quo_call_events]
 verify_jwt = false
+# Invoked by pg_cron with X-DISPATCH-TOKEN (its own auth), never a user JWT —
+# without this the gateway rejects every run with UNAUTHORIZED_NO_AUTH_HEADER.
+[functions.gmail_reply_scan]
+verify_jwt = false
