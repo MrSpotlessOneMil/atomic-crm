@@ -1,193 +1,98 @@
+// merge_contacts — merges one contact into another, behind the CRM UI's
+// "Merge with another contact" button.
+//
+// The merge itself runs through the SQL merge_two_contacts() function: the SAME
+// lossless path the automatic phone de-dup sweeper uses. That matters — SIX of
+// the nine tables referencing contacts cascade on delete, so the old
+// implementation here (which only reassigned tasks, notes and deals before
+// deleting the loser) silently destroyed the loser's text messages, call logs,
+// scheduled follow-ups and AI conversation transcript.
+//
+// The button still earns its place next to the automatic sweeper: the sweeper
+// only merges contacts that share a PHONE NUMBER, so duplicates with different
+// numbers, a typo'd number, or no phone at all can only be merged here, by a
+// human who can tell they're the same person.
+//
+// Authorization: merge_two_contacts is SECURITY DEFINER and deliberately NOT
+// executable by `authenticated`, so we cannot run it with the caller's session.
+// Instead we first check the CALLER's own RLS visibility on BOTH contacts
+// (contacts are owner-or-admin), and only then perform the privileged merge
+// with the service role.
+
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { sql, type Selectable } from "https://esm.sh/kysely@0.27.2";
-import { db, type ContactsTable, CompiledQuery } from "../_shared/db.ts";
+import { createClient } from "jsr:@supabase/supabase-js@2";
+import { supabaseAdmin } from "../_shared/supabaseAdmin.ts";
 import { corsHeaders, OptionsMiddleware } from "../_shared/cors.ts";
 import { createErrorResponse } from "../_shared/utils.ts";
 import { AuthMiddleware, UserMiddleware } from "../_shared/authentication.ts";
 
-type Contact = Selectable<ContactsTable>;
-
-// Helper functions to merge arrays
-function mergeArraysUnique<T>(arr1: T[], arr2: T[]): T[] {
-  return [...new Set([...arr1, ...arr2])];
-}
-
-function mergeObjectArraysUnique<T>(
-  arr1: T[],
-  arr2: T[],
-  getKey: (item: T) => string,
-): T[] {
-  const map = new Map<string, T>();
-
-  arr1.forEach((item) => {
-    const key = getKey(item);
-    if (key) map.set(key, item);
-  });
-
-  arr2.forEach((item) => {
-    const key = getKey(item);
-    if (key && !map.has(key)) {
-      map.set(key, item);
-    }
-  });
-
-  return Array.from(map.values());
-}
-
-function mergeContactData(winner: Contact, loser: Contact) {
-  // Merge emails
-  const mergedEmails = mergeObjectArraysUnique(
-    winner.email_jsonb || [],
-    loser.email_jsonb || [],
-    (email: any) => email.email,
-  );
-
-  // Merge phones
-  const mergedPhones = mergeObjectArraysUnique(
-    winner.phone_jsonb || [],
-    loser.phone_jsonb || [],
-    (phone: any) => phone.number,
-  );
-
-  const selectedAvatar =
-    winner.avatar && winner.avatar.src ? winner.avatar : loser.avatar;
-
-  return {
-    avatar: selectedAvatar ? (JSON.stringify(selectedAvatar) as any) : null,
-    gender: winner.gender ?? loser.gender,
-    first_name: winner.first_name ?? loser.first_name,
-    last_name: winner.last_name ?? loser.last_name,
-    title: winner.title ?? loser.title,
-    company_id: winner.company_id ?? loser.company_id,
-    email_jsonb: JSON.stringify(mergedEmails) as any,
-    phone_jsonb: JSON.stringify(mergedPhones) as any,
-    linkedin_url: winner.linkedin_url || loser.linkedin_url,
-    background: winner.background ?? loser.background,
-    has_newsletter: winner.has_newsletter ?? loser.has_newsletter,
-    first_seen: winner.first_seen ?? loser.first_seen,
-    last_seen:
-      winner.last_seen && loser.last_seen
-        ? winner.last_seen > loser.last_seen
-          ? winner.last_seen
-          : loser.last_seen
-        : (winner.last_seen ?? loser.last_seen),
-    sales_id: winner.sales_id ?? loser.sales_id,
-    tags: mergeArraysUnique(winner.tags || [], loser.tags || []),
-  };
-}
-
-async function mergeContacts(
-  loserId: number,
-  winnerId: number,
-  userId: string,
-) {
-  try {
-    return await db.transaction().execute(async (trx) => {
-      // Enable RLS by switching to authenticated role and setting user context
-      await trx.executeQuery(CompiledQuery.raw("SET LOCAL ROLE authenticated"));
-      await trx.executeQuery(
-        CompiledQuery.raw(
-          `SELECT set_config('request.jwt.claim.sub', '${userId}', true)`,
-        ),
-      );
-
-      // 1. Fetch both contacts
-      const [winner, loser] = await Promise.all([
-        trx
-          .selectFrom("contacts")
-          .selectAll()
-          .where("id", "=", winnerId)
-          .executeTakeFirstOrThrow(),
-        trx
-          .selectFrom("contacts")
-          .selectAll()
-          .where("id", "=", loserId)
-          .executeTakeFirstOrThrow(),
-      ]);
-
-      // 2. Reassign tasks from loser to winner
-      await trx
-        .updateTable("tasks")
-        .set({ contact_id: winnerId })
-        .where("contact_id", "=", loserId)
-        .execute();
-
-      // 3. Reassign notes from loser to winner
-      await trx
-        .updateTable("contact_notes")
-        .set({ contact_id: winnerId })
-        .where("contact_id", "=", loserId)
-        .execute();
-
-      // 4. Update deals - replace loserId with winnerId in contact_ids array
-      const deals = await trx
-        .selectFrom("deals")
-        .selectAll()
-        .where(sql`contact_ids @> ARRAY[${loserId}]::bigint[]`)
-        .execute();
-
-      for (const deal of deals) {
-        const newContactIds = [
-          ...new Set(
-            deal.contact_ids.filter((id) => id !== loserId).concat(winnerId),
-          ),
-        ];
-        await trx
-          .updateTable("deals")
-          .set({ contact_ids: newContactIds })
-          .where("id", "=", deal.id)
-          .execute();
-      }
-
-      // 5. Merge and update winner contact
-      const mergedData = mergeContactData(winner as Contact, loser as Contact);
-      await trx
-        .updateTable("contacts")
-        .set(mergedData)
-        .where("id", "=", winnerId)
-        .execute();
-
-      // 6. Delete loser contact
-      await trx.deleteFrom("contacts").where("id", "=", loserId).execute();
-
-      return { success: true, winnerId };
-    });
-  } catch (error) {
-    console.error("Transaction failed:", error);
-    throw error;
-  }
-}
-
 Deno.serve(async (req: Request) =>
   OptionsMiddleware(req, async (req) =>
     AuthMiddleware(req, async (req) =>
-      UserMiddleware(req, async (req, user) => {
-        // Handle POST request
-        if (req.method === "POST") {
-          try {
-            const { loserId, winnerId } = await req.json();
-
-            if (!loserId || !winnerId) {
-              return createErrorResponse(400, "Missing loserId or winnerId");
-            }
-
-            const result = await mergeContacts(loserId, winnerId, user.id);
-
-            return new Response(JSON.stringify(result), {
-              headers: { "Content-Type": "application/json", ...corsHeaders },
-            });
-          } catch (error) {
-            console.error("Merge failed:", error);
-            return createErrorResponse(
-              500,
-              `Failed to merge contacts: ${
-                error instanceof Error ? error.message : "Unknown error"
-              }`,
-            );
-          }
+      UserMiddleware(req, async (req) => {
+        if (req.method !== "POST") {
+          return createErrorResponse(405, "Method Not Allowed");
         }
 
-        return createErrorResponse(405, "Method Not Allowed");
+        let body: { loserId?: unknown; winnerId?: unknown };
+        try {
+          body = await req.json();
+        } catch {
+          return createErrorResponse(400, "Invalid JSON");
+        }
+
+        const winnerId = Number(body?.winnerId);
+        const loserId = Number(body?.loserId);
+        if (!Number.isFinite(winnerId) || !Number.isFinite(loserId)) {
+          return createErrorResponse(400, "Missing loserId or winnerId");
+        }
+        if (winnerId === loserId) {
+          return createErrorResponse(400, "Cannot merge a contact into itself");
+        }
+
+        // Authorize AS THE CALLER: RLS on contacts is owner-or-admin, so a rep
+        // may only merge records they can actually see. Both must come back.
+        const authHeader = req.headers.get("Authorization") ?? "";
+        const asUser = createClient(
+          Deno.env.get("SUPABASE_URL") ?? "",
+          Deno.env.get("SB_PUBLISHABLE_KEY") ?? "",
+          { global: { headers: { Authorization: authHeader } } },
+        );
+        const { data: visible, error: visibilityError } = await asUser
+          .from("contacts")
+          .select("id")
+          .in("id", [winnerId, loserId]);
+        if (visibilityError) {
+          console.error(
+            "[merge_contacts] visibility check failed",
+            visibilityError,
+          );
+          return createErrorResponse(500, "Could not verify contact access");
+        }
+        if (!visible || visible.length < 2) {
+          return createErrorResponse(
+            403,
+            "You don't have access to both contacts",
+          );
+        }
+
+        // Lossless merge: reassigns every child table, unions the arrays, fills
+        // the winner's null fields, then deletes the loser.
+        const { error } = await supabaseAdmin.rpc("merge_two_contacts", {
+          p_winner: winnerId,
+          p_loser: loserId,
+        });
+        if (error) {
+          console.error("[merge_contacts] merge failed", error);
+          return createErrorResponse(
+            500,
+            `Failed to merge contacts: ${error.message}`,
+          );
+        }
+
+        return new Response(JSON.stringify({ success: true, winnerId }), {
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
       }),
     ),
   ),
