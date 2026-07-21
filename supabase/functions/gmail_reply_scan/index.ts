@@ -146,11 +146,20 @@ const handle = async (req: Request) => {
     if (listRes.status === 403) {
       // gmail.readonly not granted on this connection yet — say so loudly and
       // DO NOT advance the cursor; detection starts working after a reconnect.
+      // Report the scopes Google ACTUALLY granted (not secrets) so the fix is
+      // obvious: a stale cached bundle asking for the old scopes looks exactly
+      // like the scope being blocked in the Google Cloud consent screen, and
+      // only the granted list tells them apart.
       console.error(
-        "[gmail_reply_scan] 403 — gmail.readonly scope missing; reconnect Gmail in Settings",
+        "[gmail_reply_scan] 403 — gmail.readonly missing for",
+        session.email,
+        "granted:",
+        session.scope,
       );
       return jsonOk({
         skipped: "gmail.readonly scope not granted — reconnect Gmail",
+        account: session.email,
+        granted_scopes: session.scope ?? "(not reported)",
       });
     }
     if (!listRes.ok) {

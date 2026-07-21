@@ -57,7 +57,15 @@ export async function senderSalesId(): Promise<number | null> {
 }
 
 export type GmailSession =
-  | { ok: true; salesId: number; email: string; accessToken: string }
+  | {
+      ok: true;
+      salesId: number;
+      email: string;
+      accessToken: string;
+      /** Scopes Google actually granted this token (not a secret) — lets the
+       *  reply scan report precisely what's missing instead of guessing. */
+      scope?: string;
+    }
   | { ok: false; reason: string; transient?: boolean };
 
 // Refresh an access token for the drip sender's Gmail. Shared by the outbound
@@ -106,6 +114,7 @@ export async function gmailSession(): Promise<GmailSession> {
     salesId: sid,
     email: tok.email ?? "",
     accessToken: refreshed.access_token,
+    scope: typeof refreshed.scope === "string" ? refreshed.scope : undefined,
   };
 }
 
