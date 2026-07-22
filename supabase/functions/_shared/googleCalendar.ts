@@ -99,3 +99,107 @@ export async function getFreeBusy(opts: {
   const busy = j?.calendars?.primary?.busy ?? [];
   return { free: Array.isArray(busy) ? busy.length === 0 : true };
 }
+
+/** Raw busy intervals over a window. Empty array on any failure (caller decides). */
+async function busyIntervals(opts: {
+  salesId: number;
+  startISO: string;
+  endISO: string;
+}): Promise<{ intervals: Array<{ start: number; end: number }>; error?: string }> {
+  const tok = await getGoogleAccessToken(opts.salesId);
+  if (!tok.access_token) {
+    return { intervals: [], error: tok.error || "no Google access token" };
+  }
+
+  const res = await fetch(`${CAL_API}/freeBusy`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${tok.access_token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ timeMin: opts.startISO, timeMax: opts.endISO, items: [{ id: "primary" }] }),
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) return { intervals: [], error: `freebusy ${res.status}` };
+
+  const busy = Array.isArray(j?.calendars?.primary?.busy) ? j.calendars.primary.busy : [];
+  return {
+    intervals: busy
+      .map((b: { start?: string; end?: string }) => ({
+        start: Date.parse(b?.start ?? ""),
+        end: Date.parse(b?.end ?? ""),
+      }))
+      .filter((b: { start: number; end: number }) => Number.isFinite(b.start) && Number.isFinite(b.end)),
+  };
+}
+
+/** What hour is `ms` in `timeZone`? Used to keep slots inside business hours. */
+function zonedParts(ms: number, timeZone: string): { hour: number; weekday: string } {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour: "numeric",
+    hour12: false,
+    weekday: "short",
+  }).formatToParts(new Date(ms));
+  const hour = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+  const weekday = parts.find((p) => p.type === "weekday")?.value ?? "";
+  return { hour, weekday };
+}
+
+/**
+ * Real open slots on the closer's calendar — the fix for the agent inventing times.
+ * The old nurture text promised "tomorrow at 9am or 4:30pm" to 73 different people
+ * with nothing on the calendar behind it; the agent must only ever offer slots this
+ * function actually returned.
+ *
+ * Walks the next `daysAhead` days on a 30-minute grid, weekdays only, inside
+ * business hours in `timeZone`, skipping anything overlapping a busy block and
+ * anything less than an hour away. Returns [] (never fabricated times) when the
+ * calendar can't be read, so the caller falls back to the booking link.
+ */
+export async function findOpenSlots(opts: {
+  salesId: number;
+  timeZone: string;
+  durationMinutes?: number;
+  daysAhead?: number;
+  count?: number;
+  businessHours?: { start: number; end: number };
+}): Promise<{ slots: string[]; error?: string }> {
+  const duration = (opts.durationMinutes ?? 15) * 60_000;
+  const daysAhead = opts.daysAhead ?? 5;
+  const want = opts.count ?? 3;
+  const hours = opts.businessHours ?? { start: 9, end: 17 };
+
+  const now = Date.now();
+  const from = now + 60 * 60_000; // never offer something under an hour out
+  const to = now + daysAhead * 24 * 60 * 60_000;
+
+  const { intervals, error } = await busyIntervals({
+    salesId: opts.salesId,
+    startISO: new Date(now).toISOString(),
+    endISO: new Date(to).toISOString(),
+  });
+  if (error) return { slots: [], error };
+
+  const overlapsBusy = (start: number, end: number) =>
+    intervals.some((b) => start < b.end && end > b.start);
+
+  const STEP = 30 * 60_000;
+  const slots: string[] = [];
+  // Align the first candidate to the next half hour.
+  let cursor = Math.ceil(from / STEP) * STEP;
+
+  while (cursor < to && slots.length < want) {
+    const end = cursor + duration;
+    const { hour, weekday } = zonedParts(cursor, opts.timeZone);
+    const isWeekday = !["Sat", "Sun"].includes(weekday);
+    // end-1ms so a slot finishing exactly at close still counts as inside hours.
+    const endHour = zonedParts(end - 1, opts.timeZone).hour;
+
+    if (isWeekday && hour >= hours.start && endHour < hours.end && !overlapsBusy(cursor, end)) {
+      slots.push(new Date(cursor).toISOString());
+      cursor += Math.max(duration, STEP) + 60 * 60_000; // spread offers out
+      continue;
+    }
+    cursor += STEP;
+  }
+
+  return { slots };
+}

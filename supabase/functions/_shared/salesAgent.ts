@@ -10,7 +10,7 @@ import { supabaseAdmin } from "./supabaseAdmin.ts";
 import { sendSalesSms, toE164 } from "./quoSales.ts";
 import { isCleanSms } from "./salesCopy.ts";
 import { assignToCloser } from "./handoff.ts";
-import { createCalendarEvent, getFreeBusy } from "./googleCalendar.ts";
+import { createCalendarEvent, getFreeBusy, findOpenSlots } from "./googleCalendar.ts";
 import { scheduleDemoReminders } from "./demoReminders.ts";
 import { recordBooking } from "./bookings.ts";
 
@@ -84,20 +84,56 @@ async function getOpenDeal(contactId: number): Promise<DealRow | null> {
   return (data && data[0]) ?? null;
 }
 
+/**
+ * The live CONVERSATION with this lead — not the marketing blast that preceded it.
+ *
+ * This used to be `.order(ascending: true).limit(20)`, i.e. the OLDEST 20 rows.
+ * Every lead gets a 26-touch drip and both SMS and emails land in agent_messages,
+ * so that window filled up with broadcast messages before the lead ever spoke and
+ * the agent answered each reply effectively blind — it re-asked one lead her name
+ * four times until she wrote "I just said it".
+ *
+ * Now: take the NEWEST rows, then start the transcript at the lead's first inbound.
+ * That drops the one-way drip (which the model would otherwise read as its own
+ * conversational turns) and guarantees the array starts with a `user` message,
+ * which the Anthropic API requires. What we last sent them before they replied is
+ * passed separately via lastOutboundBefore() and folded into the system prompt.
+ */
 async function loadHistory(
   contactId: number,
-  limit = 20,
+  limit = 30,
 ): Promise<Array<{ role: "user" | "assistant"; content: string }>> {
   const { data } = await supabaseAdmin
     .from("agent_messages")
     .select("direction, body, created_at")
     .eq("contact_id", contactId)
-    .order("created_at", { ascending: true })
+    .order("created_at", { ascending: false })
     .limit(limit);
-  return (data ?? []).map((m) => ({
-    role: m.direction === "inbound" ? "user" : "assistant",
+
+  const chronological = (data ?? []).slice().reverse();
+  const firstInbound = chronological.findIndex((m) => m.direction === "inbound");
+  if (firstInbound === -1) return [];
+
+  return chronological.slice(firstInbound).map((m) => ({
+    role: m.direction === "inbound" ? ("user" as const) : ("assistant" as const),
     content: m.body as string,
   }));
+}
+
+/** The last thing we sent before they replied — context, not a conversational turn. */
+async function lastOutboundBefore(contactId: number): Promise<string | null> {
+  const { data } = await supabaseAdmin
+    .from("agent_messages")
+    .select("direction, body, created_at")
+    .eq("contact_id", contactId)
+    .order("created_at", { ascending: false })
+    .limit(30);
+
+  const chronological = (data ?? []).slice().reverse();
+  const firstInbound = chronological.findIndex((m) => m.direction === "inbound");
+  if (firstInbound <= 0) return null;
+  const prior = chronological[firstInbound - 1];
+  return typeof prior?.body === "string" ? prior.body.slice(0, 300) : null;
 }
 
 // One short line about the lead's most recent phone call (persisted by
@@ -152,6 +188,7 @@ function systemPrompt(
   tz: string,
   nowLine: string,
   lastCall: string | null = null,
+  lastOutbound: string | null = null,
 ): string {
   const origin = attributionLine(contact.attribution);
   const known = [
@@ -180,6 +217,18 @@ STYLE (this is SMS):
 - Mirror their words. Keep it moving toward a booked time.
 - NAMES: if you do NOT know their first name, greet warmly WITHOUT a name ("hey!" / "hey there") - NEVER call them "Lead". Get their name + business early; the moment you learn either, call save_identity to save it to the CRM.
 
+MEMORY - THE #1 RULE:
+- You are MID-CONVERSATION. Everything below is a live thread, not a fresh start.
+- NEVER ask for anything you already know - not from "Known so far", not from anything they already said in this thread. Re-asking a lead their name is the single worst thing you can do; it has cost us real deals.
+- Greet ONCE. After your first message in a thread, no more "hey! thanks for grabbing the templates" - just answer them like a human mid-chat would.
+- If they push back ("i just said it", "i already told you", "who is this?"), STOP asking, apologize in a few words, use what they gave you, and move to booking.
+- If you genuinely cannot parse something they said, do not re-ask the same question a second time - make your best guess, confirm it in passing, and keep going.
+
+WHEN THEY WANT TO BOOK - DO NOT BLOCK THEM:
+- "do you have a link" / "send me the link" / "what time" / "what times work" / "sure" / "yes let's do it" = BOOKING INTENT. Answer it IMMEDIATELY on that turn. Never reply to a booking request with another qualifying question.
+- On booking intent: call get_availability, offer the real slots it returns, and book with book_appointment. If they specifically asked for a LINK, call send_booking_link and send the link, then keep qualifying afterwards if you still need to.
+- Only quote times that get_availability actually returned. NEVER invent times - we used to text people "i've got tomorrow at 9am or 4:30pm" with nothing on the calendar, and it burned them.
+
 PLAYBOOK:
 - Qualify naturally across the chat: are they the owner/decision-maker; residential / commercial / both; roughly how big (solo, few cleaners, bigger); are they already getting leads (running Meta/Google ads or steady jobs); what's the real headache (missed leads, slow follow-up, scheduling chaos, no-shows, paying a VA); can they invest about $599+/mo.
 - QUALIFY BEFORE YOU BOOK - this is the most important thing. Robin Line fits established operators who have real lead flow and can afford it. If they ARE a fit, drive to the demo and BOOK IT YOURSELF: propose 2-3 specific times in ${tz}, ask for the best email for the calendar invite, and once they pick a time call book_appointment with start_iso (ISO 8601 with the ${tz} offset) plus their email - it creates the calendar invite + a google meet link and books it. Then confirm in ONE short text and include the meet link the tool returns. If they would rather pick their own slot, fall back to send_booking_link. If they are clearly NOT a fit yet (just starting, no leads, can't do $599, not the owner), do NOT book a demo - be warm, tell them what to fix first, offer to keep them posted, and call qualify_lead + log_note. Booking tire-kickers who then ghost is exactly what we are trying to stop.
@@ -191,7 +240,11 @@ PLAYBOOK:
 TIME: right now it is ${nowLine}. Quote times to the lead in ${tz}, and build start_iso for book_appointment as ISO 8601 with that timezone's offset (e.g. 2026-07-02T14:00:00-07:00). Only book future times.
 
 Use the tools to do the work; your final text is the SMS that gets sent to them. If a tool already says everything (e.g. opt_out), reply with an empty message.
-Known so far: ${known || "nothing yet"}.`;
+Known so far: ${known || "nothing yet"}.${
+    lastOutbound
+      ? `\nThe last thing we sent them before they replied (context only, do not repeat it): "${lastOutbound}"`
+      : ""
+  }`;
 }
 
 function toolDefs() {
@@ -225,9 +278,20 @@ function toolDefs() {
       },
     },
     {
+      name: "get_availability",
+      description:
+        "REAL open slots on the closer's calendar. Call this BEFORE proposing any time - never invent times. Returns up to 3 slots as ISO 8601. If it returns none, do not guess: use send_booking_link instead.",
+      input_schema: {
+        type: "object",
+        properties: {
+          duration_minutes: { type: "number", description: "defaults to 15" },
+        },
+      },
+    },
+    {
       name: "send_booking_link",
       description:
-        "FALLBACK booking: get the Calendly demo link and move the deal to 'contacted'. Use only when the lead would rather pick their own slot; otherwise prefer book_appointment. Include the returned url in your text.",
+        "Get the Calendly demo link and move the deal to 'contacted'. Use IMMEDIATELY when the lead asks for a link, and as the fallback whenever get_availability returns no slots. Include the returned url in your text.",
       input_schema: { type: "object", properties: {} },
     },
     {
@@ -371,6 +435,41 @@ async function execTool(
       }
       await supabaseAdmin.from("deals").update(patch).eq("id", ctx.deal.id);
       return "recorded";
+    }
+    case "get_availability": {
+      const tz = (await getSecret("DEMO_TIMEZONE")) || "America/Los_Angeles";
+      const closerId = Number((await getSecret("CLOSER_SALES_ID")) ?? 4) || 4;
+      const duration = Math.max(
+        10,
+        Math.min(120, Number(input.duration_minutes) || Number(await getSecret("DEMO_DURATION_MINUTES")) || 15),
+      );
+
+      const { slots, error } = await findOpenSlots({
+        salesId: closerId,
+        timeZone: tz,
+        durationMinutes: duration,
+      });
+
+      if (error || slots.length === 0) {
+        // No fabricated times, ever - tell the agent to fall back to the link.
+        return JSON.stringify({
+          slots: [],
+          note: "calendar unavailable or fully booked - use send_booking_link instead, do NOT invent times",
+          error: error ?? null,
+        });
+      }
+
+      const human = slots.map((iso) => {
+        try {
+          return new Intl.DateTimeFormat("en-US", {
+            weekday: "short", month: "short", day: "numeric",
+            hour: "numeric", minute: "2-digit", timeZone: tz,
+          }).format(new Date(iso));
+        } catch {
+          return iso;
+        }
+      });
+      return JSON.stringify({ timezone: tz, slots, human, duration_minutes: duration });
     }
     case "send_booking_link": {
       const url = (await getSecret("CALENDLY_BOOKING_URL")) || "https://calendly.com/dominic-theosirisai/cleaning-gameplan";
@@ -588,7 +687,8 @@ export async function runSalesAgentTurn(contactId: number): Promise<string | nul
     nowLine = new Date().toUTCString();
   }
   const lastCall = await lastCallSnippet(contactId);
-  const system = systemPrompt(contact as ContactRow, deal, companyName, tz, nowLine, lastCall);
+  const lastOutbound = await lastOutboundBefore(contactId);
+  const system = systemPrompt(contact as ContactRow, deal, companyName, tz, nowLine, lastCall, lastOutbound);
 
   let replyText = "";
   for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
