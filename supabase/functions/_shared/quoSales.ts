@@ -37,6 +37,11 @@ async function getSecret(key: string): Promise<string | null> {
 export const getQuoKey = () => getSecret("QUO_API_KEY");
 export const getSalesNumber = () => getSecret("SALES_AGENT_QUO_NUMBER");
 
+// The owner's personal phone, which receives new-lead alerts on this same line.
+// Anything inbound FROM this number is the owner (often just an iMessage tapback
+// on an alert), never a lead. Unset = the guard is a no-op.
+export const getOwnerAlertPhone = () => getSecret("OWNER_ALERT_PHONE");
+
 // Global kill switch. When integration_secrets.SALES_SENDS_PAUSED == "true",
 // the funnel logs leads/appointments into the CRM as usual but sends NO
 // automated SMS (speed-to-lead, nurture, reminders, AI agent replies). Toggle

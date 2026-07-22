@@ -19,6 +19,7 @@ import {
   salesSendsPaused,
   logSms,
   isOurOutboundMessage,
+  getOwnerAlertPhone,
 } from "../_shared/quoSales.ts";
 import { runSalesAgentTurn } from "../_shared/salesAgent.ts";
 import { enrichFromMessage } from "../_shared/enrich.ts";
@@ -200,6 +201,17 @@ const handle = async (req: Request) => {
   const to = toE164(firstStr(msg.to));
   const text = String(msg.body ?? msg.text ?? "").trim();
   if (!from || !text) return ok();
+
+  // The owner's own phone is NOT a lead. Robin Line texts new-lead alerts to the
+  // owner from this same line, so an iMessage tapback ("Disliked ...") or any
+  // reply from that number used to be ingested as a lead message - the agent then
+  // answered its own alerts, and one contact ended up holding alerts for two
+  // different leads and being addressed by both names.
+  const ownerPhone = toE164((await getOwnerAlertPhone()) ?? "");
+  if (ownerPhone && from === ownerPhone) {
+    console.info("[quo_inbound] ignoring message from the owner alert number", { from });
+    return ok();
+  }
 
   // SCOPE: only act on texts to our dedicated sales line.
   const sales = toE164((await getSalesNumber()) ?? "");

@@ -213,6 +213,24 @@ async function handleEmailTask(task: TaskRow): Promise<Outcome> {
     });
     return "failed";
   }
+
+  // Opt-out applies on EVERY channel. The SMS path has always checked
+  // sms_suppressions, but drip email had no equivalent guard - so a lead who
+  // texted STOP kept receiving nurture emails. The FCC's April 2025 update is
+  // explicit that an opt-out must be honored across channels, and TCPA damages
+  // run $500-$1,500 per message.
+  const { data: emailSup } = await supabaseAdmin
+    .from("email_suppressions")
+    .select("id")
+    .eq("email", email.toLowerCase())
+    .maybeSingle();
+  if (emailSup) {
+    await setStatus(task.id, {
+      status: "canceled",
+      last_error: "suppressed (opt-out)",
+    });
+    return "skipped";
+  }
   // Email opt-out suppression (STOP by text, "reply stop" by email, manual).
   const { data: esup } = await supabaseAdmin
     .from("email_suppressions")
