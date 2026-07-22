@@ -84,6 +84,45 @@ export async function logSms(row: {
   }
 }
 
+/**
+ * Did WE send this outbound text (AI agent / dispatcher), or did a human send it
+ * from the OpenPhone app? Every automated send logs its OpenPhone message id to
+ * sms_messages, so an outbound id we have never seen means a human typed it.
+ *
+ * The id lookup can lose a race (the webhook may beat our own logSms insert), so
+ * an identical outbound body for the same contact in the last few minutes also
+ * counts as ours. Both checks fail toward "ours": a false "human" would wrongly
+ * mute the funnel for that lead, which is worse than missing one pause.
+ */
+export async function isOurOutboundMessage(opts: {
+  openphoneMessageId: string | null;
+  contactId: number | null;
+  body: string;
+}): Promise<boolean> {
+  if (opts.openphoneMessageId) {
+    const { data } = await supabaseAdmin
+      .from("sms_messages")
+      .select("id")
+      .eq("openphone_message_id", opts.openphoneMessageId)
+      .maybeSingle();
+    if (data) return true;
+  }
+
+  const body = opts.body.trim();
+  if (!opts.contactId || !body) return true;
+
+  const since = new Date(Date.now() - 5 * 60_000).toISOString();
+  const { data: recent } = await supabaseAdmin
+    .from("sms_messages")
+    .select("id")
+    .eq("contact_id", opts.contactId)
+    .eq("direction", "outbound")
+    .eq("body", body)
+    .gte("created_at", since)
+    .limit(1);
+  return Boolean(recent && recent.length);
+}
+
 // Send one SMS from the sales number. Never throws — returns a structured
 // result so callers (the dispatcher) can mark tasks sent/failed and retry.
 // Pass opts.contactId to also persist the sent text to sms_messages (best-effort).
