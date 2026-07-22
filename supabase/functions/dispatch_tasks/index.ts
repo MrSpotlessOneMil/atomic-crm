@@ -20,6 +20,7 @@ import {
   CHASE_TASK_TYPES,
   identityContactIds,
 } from "../_shared/haltFollowup.ts";
+import { isAiPaused } from "../_shared/aiPause.ts";
 import { handleCallTask } from "./callTask.ts";
 import {
   MAX_ATTEMPTS,
@@ -376,6 +377,22 @@ async function processTask(task: TaskRow): Promise<Outcome> {
       last_error: "lead responded (chase skipped)",
     });
     return "skipped";
+  }
+
+  // Human-takeover guard: hold the chase rather than texting over a rep who is
+  // mid-conversation. Deferred (not canceled) so the cadence resumes if the
+  // pause simply lapses. Reminders + no-show checks are exempt by design.
+  if (
+    task.contact_id &&
+    CHASE_TASK_TYPES.includes(task.task_type) &&
+    (await isAiPaused(task.contact_id))
+  ) {
+    await setStatus(task.id, {
+      status: "pending",
+      run_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+      last_error: "human owns the conversation (deferred)",
+    });
+    return "deferred";
   }
 
   // Action tasks (non-SMS) branch out first.
