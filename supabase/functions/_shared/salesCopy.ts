@@ -85,70 +85,44 @@ export interface NurtureStep {
 const MIN_H = 60;
 const MIN_D = 60 * 24;
 
+// 5 touches over 21 days (day 0 opener, then 2 / 5 / 12 / 21), then STOP - the
+// file never reopens. This replaced a 10-texts-in-10-days sequence that put three
+// messages in the first 8 hours; 2026 benchmarks put the useful range at 4-6 touches
+// over 3-4 weeks, 2-3 days apart early and 7-14 later, with 58% of replies coming
+// off the first message and reputation damage past touch 6.
+//
+// The old day-0 "nudge_timeab" step was deleted outright: it texted
+// "i've got tomorrow at 9am or 4:30pm open for your 15 min setup call" to 73
+// different people with nothing on the calendar behind it. Real times now come
+// only from the agent's get_availability tool.
 export const NURTURE: NurtureStep[] = [
   {
-    // Playbook Text 2, the engagement ("shirt color") question: ANY answer
-    // restarts the conversation, and responders show up.
+    // Day 2: the engagement question - ANY answer restarts the conversation.
     key: "nudge_engage",
-    offsetMinutes: Math.round(3.5 * MIN_H),
+    offsetMinutes: 2 * MIN_D,
     template:
       "quick q while i set up your file - when mary picks up your missed calls, you want her answering in english, spanish, or both?",
   },
   {
-    // Playbook Text 3, the evening time A/B (both options assume yes).
-    key: "nudge_timeab",
-    offsetMinutes: 8 * MIN_H,
-    template:
-      "last one for today, promise :) i've got tomorrow at 9am or 4:30pm open for your 15 min setup call. morning or afternoon?",
-  },
-  {
-    // Day 2: proof (real client story).
-    key: "nudge_proof_2d",
-    offsetMinutes: 1 * MIN_D,
+    // Day 5: proof (real client story).
+    key: "nudge_proof_5d",
+    offsetMinutes: 5 * MIN_D,
     template:
       "{{first_name}}, one of our cleaning clients turned mary on and now wakes up to bookings that came in overnight while he slept. want to see it for your biz? 15 min",
   },
   {
-    // Day 3: the 1-to-10 close.
-    key: "nudge_1to10_3d",
-    offsetMinutes: 2 * MIN_D,
-    template:
-      "real quick, 1 to 10 - how serious are you about automating your business right now? whatever the number, i'll point you the right way",
-  },
-  {
-    // Day 4: bump.
-    key: "nudge_bump_4d",
-    offsetMinutes: 3 * MIN_D,
-    template:
-      "hey {{first_name}}, just bumping this up :) free today, or tomorrow morning, for 7 minutes?",
-  },
-  {
-    // Day 5: best case / worst case + risk reversal.
-    key: "nudge_bestworst_5d",
-    offsetMinutes: 4 * MIN_D,
+    // Day 12: risk reversal.
+    key: "nudge_bestworst_12d",
+    offsetMinutes: 12 * MIN_D,
     template:
       "just so you know - the trial is 14 days, free, no card. worst case you walk away with free tips. best case your jobs start booking themselves. turn it on?",
   },
   {
-    // Day 6: the "reason" close, kept playful.
-    key: "nudge_reason_6d",
-    offsetMinutes: 5 * MIN_D,
+    // Day 21: honest close-out (door stays open, but we never text again).
+    key: "closeout_21d",
+    offsetMinutes: 21 * MIN_D,
     template:
-      "i get it, you're slammed. but being too busy to answer this text is exactly the problem robin line kills :) 15 min and it's off your plate. today or tomorrow?",
-  },
-  {
-    // Day 7: go personal - offer the 60-second video / voice memo.
-    key: "nudge_video_7d",
-    offsetMinutes: 6 * MIN_D,
-    template:
-      "hey {{first_name}}, instead of another text i can send you 60 seconds of what mary actually says when a customer calls while you're on a job. want it?",
-  },
-  {
-    // Day 10: honest close-out (door stays open).
-    key: "closeout_10d",
-    offsetMinutes: 9 * MIN_D,
-    template:
-      "i'll stop blowing up your phone after this one :) if now's not the time, all good. want the free 14 day trial? reply yes and i'll set you up today",
+      "i'll stop texting after this one :) if now's not the time, all good. want the free 14 day trial? reply yes and i'll set you up today",
   },
 ];
 
